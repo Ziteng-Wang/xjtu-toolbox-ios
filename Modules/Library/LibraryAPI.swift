@@ -61,20 +61,29 @@ final class LibraryAPI {
     }
 
     func getSeats(areaCode: String) async -> SeatResult {
-        if !login.seatSystemReady {
-            return .authError(message: "图书馆认证未完成", htmlPreview: "")
+        guard await ensureSeatReady() else {
+            return .authError(message: authMessage(fallback: "图书馆认证未完成"), htmlPreview: "")
         }
 
         do {
-            let response = try await login.client.get(
-                "\(Self.baseURL)/qseat?sp=\(areaCode)",
-                headers: ajaxHeaders,
-                useWebVPN: login.useWebVPN
-            )
+            var response = try await requestSeats(areaCode: areaCode)
+            var body = response.bodyString
 
-            let body = response.bodyString
             if isRedirectedToLogin(body: body, finalURL: response.finalURL.absoluteString) {
-                return .authError(message: "认证失效，请重新登录", htmlPreview: String(body.prefix(200)))
+                guard await ensureSeatReady() else {
+                    return .authError(
+                        message: authMessage(fallback: "认证失效，请重新登录"),
+                        htmlPreview: String(body.prefix(200))
+                    )
+                }
+                response = try await requestSeats(areaCode: areaCode)
+                body = response.bodyString
+                if isRedirectedToLogin(body: body, finalURL: response.finalURL.absoluteString) {
+                    return .authError(
+                        message: authMessage(fallback: "认证失效，请重新登录"),
+                        htmlPreview: String(body.prefix(200))
+                    )
+                }
             }
 
             guard let root = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any] else {
@@ -111,6 +120,10 @@ final class LibraryAPI {
     }
 
     func bookSeat(seatID: String, areaCode: String, autoSwap: Bool = true) async -> BookResult {
+        guard await ensureSeatReady() else {
+            return BookResult(success: false, message: authMessage(fallback: "图书馆认证未完成"), finalURL: "")
+        }
+
         do {
             let url = "\(Self.baseURL)/seat/?kid=\(seatID)&sp=\(areaCode)"
             let response = try await login.client.get(url, useWebVPN: login.useWebVPN)
@@ -150,6 +163,10 @@ final class LibraryAPI {
     }
 
     func getMyBooking() async -> MyBookingInfo? {
+        guard await ensureSeatReady() else {
+            return nil
+        }
+
         let candidateURLs = [
             "\(Self.baseURL)/seat/",
             "\(Self.baseURL)/my/",
@@ -184,6 +201,10 @@ final class LibraryAPI {
     }
 
     func executeAction(_ actionURL: String) async -> BookResult {
+        guard await ensureSeatReady() else {
+            return BookResult(success: false, message: authMessage(fallback: "图书馆认证未完成"), finalURL: "")
+        }
+
         do {
             let absolute: String
             if actionURL.hasPrefix("http") {
@@ -236,6 +257,25 @@ final class LibraryAPI {
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Referer": "\(Self.baseURL)/seat/"
         ]
+    }
+
+    private func requestSeats(areaCode: String) async throws -> HTTPResponse {
+        try await login.client.get(
+            "\(Self.baseURL)/qseat?sp=\(areaCode)",
+            headers: ajaxHeaders,
+            useWebVPN: login.useWebVPN
+        )
+    }
+
+    private func ensureSeatReady() async -> Bool {
+        if login.seatSystemReady {
+            return true
+        }
+        return (try? await login.reAuthenticate()) == true
+    }
+
+    private func authMessage(fallback: String) -> String {
+        login.diagnosticInfo.isEmpty ? fallback : login.diagnosticInfo
     }
 
     private func isRedirectedToLogin(body: String, finalURL: String) -> Bool {

@@ -199,7 +199,7 @@ final class ScheduleAPI {
         )
 
         if let json = try? jsonObject(response.data),
-           let rows = (((json["datas"] as? [String: Any])?["cxxnxqgl"] as? [String: Any])?["rows"] as? [[String: Any]] {
+           let rows = (((json["datas"] as? [String: Any])?["cxxnxqgl"] as? [String: Any])?["rows"] as? [[String: Any]]) {
             let terms = rows.compactMap { $0["DM"] as? String }
             if !terms.isEmpty {
                 return terms

@@ -74,7 +74,8 @@ struct LibraryScreen: View {
     private func loadData() async {
         guard await loginState.ensureLogin(type: .library),
               let login = loginState.libraryLogin else {
-            message = "未登录图书馆系统"
+            let diagnostic = loginState.libraryLogin?.diagnosticInfo ?? ""
+            message = diagnostic.isEmpty ? "未登录图书馆系统" : diagnostic
             return
         }
 
@@ -101,7 +102,8 @@ struct LibraryScreen: View {
     private func book(seatID: String) async {
         guard await loginState.ensureLogin(type: .library),
               let login = loginState.libraryLogin else {
-            message = "未登录图书馆系统"
+            let diagnostic = loginState.libraryLogin?.diagnosticInfo ?? ""
+            message = diagnostic.isEmpty ? "未登录图书馆系统" : diagnostic
             return
         }
 

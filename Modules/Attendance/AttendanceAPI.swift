@@ -198,20 +198,31 @@ final class AttendanceAPI {
     }
 
     func computeCourseStats(from records: [AttendanceWaterRecord]) -> [CourseAttendanceStat] {
-        Dictionary(grouping: records, by: { $0.courseName })
-            .filter { !$0.key.isEmpty }
-            .map { name, rows in
+        let grouped = Dictionary(grouping: records, by: \.courseName)
+        var stats: [CourseAttendanceStat] = []
+        stats.reserveCapacity(grouped.count)
+
+        for (name, rows) in grouped where !name.isEmpty {
+            let normalCount = rows.reduce(0) { $1.status == .normal ? $0 + 1 : $0 }
+            let lateCount = rows.reduce(0) { $1.status == .late ? $0 + 1 : $0 }
+            let absenceCount = rows.reduce(0) { $1.status == .absence ? $0 + 1 : $0 }
+            let leaveCount = rows.reduce(0) { $1.status == .leave ? $0 + 1 : $0 }
+
+            stats.append(
                 CourseAttendanceStat(
                     subjectName: name,
                     subjectCode: "",
-                    normalCount: rows.filter { $0.status == .normal }.count,
-                    lateCount: rows.filter { $0.status == .late }.count,
-                    absenceCount: rows.filter { $0.status == .absence }.count,
+                    normalCount: normalCount,
+                    lateCount: lateCount,
+                    absenceCount: absenceCount,
                     leaveEarlyCount: 0,
-                    leaveCount: rows.filter { $0.status == .leave }.count,
+                    leaveCount: leaveCount,
                     total: rows.count
                 )
-            }
+            )
+        }
+
+        return stats
     }
 
     private func post(path: String, json: [String: Any]? = nil) async throws -> [String: Any] {

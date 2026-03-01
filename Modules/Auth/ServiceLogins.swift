@@ -285,18 +285,22 @@ final class LibraryLogin: XJTULogin {
     }
 
     override func postLogin(finalURL: URL, body: String) async throws {
-        if body.contains("btn-group") || body.contains("tab-select") || body.contains("seat") {
+        if isSeatPage(body) {
             seatSystemReady = true
             diagnosticInfo = "座位系统已就绪"
             return
         }
-        _ = try await reAuthenticate()
+
+        let recovered = try await reAuthenticate()
+        if !recovered {
+            throw HTTPError.authenticationRequired
+        }
     }
 
     func reAuthenticate() async throws -> Bool {
         let response = try await client.get("\(Self.seatBaseURL)/seat/", useWebVPN: useWebVPN)
         let body = response.bodyString
-        if body.contains("btn-group") || body.contains("tab-select") || body.contains("seat") {
+        if isSeatPage(body) {
             seatSystemReady = true
             diagnosticInfo = "座位系统已就绪"
             return true
@@ -305,6 +309,10 @@ final class LibraryLogin: XJTULogin {
         seatSystemReady = false
         diagnosticInfo = "座位系统认证失败，请确认校园网或 VPN"
         return false
+    }
+
+    private func isSeatPage(_ body: String) -> Bool {
+        body.contains("btn-group") || body.contains("tab-select") || body.contains("seat")
     }
 }
 

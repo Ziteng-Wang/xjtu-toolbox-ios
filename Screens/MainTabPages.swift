@@ -50,7 +50,7 @@ struct HomeView: View {
                     statusRow("移动教务", loginState.jwappLogin != nil)
                     statusRow("一网通办", loginState.ywtbLogin != nil)
                     statusRow("考勤", loginState.attendanceLogin != nil)
-                    statusRow("图书馆", loginState.libraryLogin != nil)
+                    statusRow("图书馆", loginState.libraryLogin?.seatSystemReady == true)
                     statusRow("校园卡", loginState.campusCardLogin != nil)
                     statusRow("研究生评教", loginState.gsteLogin != nil)
                 }
@@ -242,7 +242,7 @@ struct ToolsView: View {
                     if !webVPNOutput.isEmpty {
                         Text(webVPNOutput)
                             .font(.footnote)
-                            .foregroundStyle(webVPNOutput.hasPrefix("http") ? .primary : .red)
+                            .foregroundStyle(webVPNOutput.hasPrefix("http") ? Color.primary : Color.red)
                             .textSelection(.enabled)
 
                         if webVPNOutput.hasPrefix("http") {

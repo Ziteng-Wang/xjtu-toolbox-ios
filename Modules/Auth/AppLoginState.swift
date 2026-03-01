@@ -9,6 +9,7 @@ final class AppLoginState: ObservableObject {
     @Published var nsaPhotoData: Data?
     @Published var nsaLoading = false
     @Published var nsaError: String?
+    @Published var lastLoginError: String?
 
     @Published var attendanceLogin: AttendanceLogin?
     @Published var jwxtLogin: JwxtLogin?
@@ -97,6 +98,7 @@ final class AppLoginState: ObservableObject {
         gsteLogin = nil
         isOnCampus = nil
         webVPNReady = false
+        lastLoginError = nil
 
         savedUsername = ""
         savedPassword = ""
@@ -107,15 +109,30 @@ final class AppLoginState: ObservableObject {
     }
 
     func autoLogin(type: LoginType) async -> XJTULogin? {
+        lastLoginError = nil
+
         if let cached = cachedLogin(for: type) {
-            return cached
+            if type == .library, let library = cached as? LibraryLogin {
+                if library.seatSystemReady {
+                    return library
+                }
+                if (try? await library.reAuthenticate()) == true {
+                    return library
+                }
+                lastLoginError = library.diagnosticInfo.isEmpty ? "图书馆认证状态失效" : library.diagnosticInfo
+                libraryLogin = nil
+            } else {
+                return cached
+            }
         }
 
         guard hasCredentials else {
+            lastLoginError = "请先输入账号和密码"
             return nil
         }
 
         let needsInternalNetwork = type == .attendance || type == .library
+        var isOffCampusWithoutVPN = false
         if needsInternalNetwork {
             if isOnCampus == nil {
                 isOnCampus = await detectCampusNetwork()
@@ -123,9 +140,10 @@ final class AppLoginState: ObservableObject {
             if isOnCampus == false, !webVPNReady {
                 webVPNReady = await loginWebVPN()
             }
+            isOffCampusWithoutVPN = isOnCampus == false && !webVPNReady
         }
 
-        let useWebVPN = needsInternalNetwork && isOnCampus == false
+        let useWebVPN = needsInternalNetwork && isOnCampus == false && webVPNReady
 
         let login = makeLogin(type: type, useWebVPN: useWebVPN)
 
@@ -136,9 +154,15 @@ final class AppLoginState: ObservableObject {
             }
 
             guard result.state == .success else {
+                var message = loginFailureMessage(from: result)
+                if isOffCampusWithoutVPN {
+                    message += "（当前疑似校外网络，且 WebVPN 未连接成功）"
+                }
+                lastLoginError = message
                 return nil
             }
 
+            lastLoginError = nil
             cache(login: login, username: savedUsername)
             cachedVisitorID = login.fpVisitorId
             if let rsa = login.getRsaPublicKey() {
@@ -154,6 +178,11 @@ final class AppLoginState: ObservableObject {
 
             return login
         } catch {
+            var message = readableLoginError(error)
+            if isOffCampusWithoutVPN {
+                message += "（当前疑似校外网络，且 WebVPN 未连接成功）"
+            }
+            lastLoginError = message
             return nil
         }
     }
@@ -285,7 +314,10 @@ final class AppLoginState: ObservableObject {
     }
 
     private func loginWebVPN() async -> Bool {
-        guard hasCredentials else { return false }
+        guard hasCredentials else {
+            lastLoginError = "缺少账号或密码，无法登录 WebVPN"
+            return false
+        }
 
         let login = XJTULogin(
             loginURL: AppConstants.URLS.webVPNLoginURL,
@@ -307,9 +339,43 @@ final class AppLoginState: ObservableObject {
                 await persistRuntimeCache()
                 return true
             }
+
+            lastLoginError = "WebVPN 登录失败：\(loginFailureMessage(from: result))"
             return false
         } catch {
+            lastLoginError = "WebVPN 登录失败：\(readableLoginError(error))"
             return false
         }
+    }
+
+    private func loginFailureMessage(from result: LoginResult) -> String {
+        switch result.state {
+        case .success:
+            return "登录成功"
+        case .requireMFA:
+            return "登录需要二次验证，当前版本暂不支持"
+        case .requireCaptcha:
+            return "登录需要验证码，当前版本暂不支持"
+        case .requireAccountChoice:
+            return "需要选择账号类型，请确认是否为本科账号"
+        case .fail:
+            return result.message.isEmpty ? "登录失败，请检查凭据" : result.message
+        }
+    }
+
+    private func readableLoginError(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut:
+                return "网络请求超时，请稍后重试"
+            case .notConnectedToInternet:
+                return "网络未连接，请检查网络"
+            case .cannotFindHost, .cannotConnectToHost:
+                return "无法连接服务器，请检查网络或 VPN"
+            default:
+                return urlError.localizedDescription
+            }
+        }
+        return error.localizedDescription
     }
 }

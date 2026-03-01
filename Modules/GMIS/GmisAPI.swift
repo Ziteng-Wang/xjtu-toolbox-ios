@@ -48,7 +48,7 @@ final class GmisAPI {
         if let timestamp {
             let term = timestampToTerm(timestamp)
             let page = try await fetchSchedulePage()
-            let optionPattern = """<option[^>]*value=[\"']([^\"']+)[\"'][^>]*>\(NSRegularExpression.escapedPattern(for: term))</option>"""
+            let optionPattern = #"<option[^>]*value=["']([^"']+)["'][^>]*>\#(NSRegularExpression.escapedPattern(for: term))</option>"#
             let value = page.firstMatch(pattern: optionPattern, options: [.caseInsensitive])
             guard let value else {
                 return parseSchedule(page)
@@ -121,11 +121,11 @@ final class GmisAPI {
             let day = Int(html[dayRange]) ?? 1
             let text = String(html[contentRange])
 
-            guard let name = text.firstMatch(pattern: """课程：([^<]+)"""),
-                  let teacher = text.firstMatch(pattern: """教师：([^<]+)"""),
-                  let classroom = text.firstMatch(pattern: """教室：([^<]+)"""),
-                  let periods = text.firstMatch(pattern: """节次：([^<]+)"""),
-                  let weeks = text.firstMatch(pattern: """周次：([^<]+)""") else {
+            guard let name = text.firstMatch(pattern: "课程：([^<]+)"),
+                  let teacher = text.firstMatch(pattern: "教师：([^<]+)"),
+                  let classroom = text.firstMatch(pattern: "教室：([^<]+)"),
+                  let periods = text.firstMatch(pattern: "节次：([^<]+)"),
+                  let weeks = text.firstMatch(pattern: "周次：([^<]+)") else {
                 continue
             }
 

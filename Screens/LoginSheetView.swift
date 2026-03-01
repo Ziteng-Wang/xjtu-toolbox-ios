@@ -110,7 +110,11 @@ struct LoginSheetView: View {
             try? await Task.sleep(nanoseconds: 400_000_000)
             dismiss()
         } else {
-            message = "登录失败，请检查凭据或网络"
+            if let detail = loginState.lastLoginError, !detail.isEmpty {
+                message = "登录失败：\(detail)"
+            } else {
+                message = "登录失败，请检查凭据或网络"
+            }
         }
     }
 }

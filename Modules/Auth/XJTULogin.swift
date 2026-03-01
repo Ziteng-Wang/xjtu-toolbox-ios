@@ -275,7 +275,7 @@ class XJTULogin {
     }
 
     private func extractExecutionValue(from html: String) -> String {
-        html.firstMatch(pattern: """name=[\"']execution[\"'][^>]*value=[\"']([^\"']+)[\"']""", options: [.caseInsensitive]) ?? ""
+        html.firstMatch(pattern: #"name=["']execution["'][^>]*value=["']([^"']+)["']"#, options: [.caseInsensitive]) ?? ""
     }
 
     private func extractMfaEnabled(from html: String) -> Bool {
@@ -290,13 +290,13 @@ class XJTULogin {
 
     private func extractAlertMessage(from html: String) -> String? {
         if let title = html.firstMatch(
-            pattern: """<el-alert[^>]*title=[\"']([^\"']+)[\"']""",
+            pattern: #"<el-alert[^>]*title=["']([^"']+)["']"#,
             options: [.caseInsensitive]
         ), !title.isEmpty {
             return title
         }
         if let error = html.firstMatch(
-            pattern: """(?:alert-danger|errors|errorMessage)[^>]*>([^<]+)<""",
+            pattern: #"(?:alert-danger|errors|errorMessage)[^>]*>([^<]+)<"#,
             options: [.caseInsensitive]
         ), !error.isEmpty {
             return error
@@ -334,7 +334,7 @@ class XJTULogin {
 
         // Fallback for old CAS pages.
         let labels = html.allMatches(
-            pattern: """<input[^>]*name=[\"']username[\"'][^>]*value=[\"']([^\"']+)[\"']""",
+            pattern: #"<input[^>]*name=["']username["'][^>]*value=["']([^"']+)["']"#,
             options: [.caseInsensitive]
         )
         result = labels.map { AccountChoice(name: $0, label: $0) }
@@ -365,5 +365,4 @@ private extension Data {
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 }
-
 
