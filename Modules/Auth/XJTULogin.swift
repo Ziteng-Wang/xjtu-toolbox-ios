@@ -292,9 +292,9 @@ class XJTULogin {
         postURL = response.finalURL.absoluteString
         executionInput = extractExecutionValue(from: body)
 
-        logger.info("ensureInitialized finalURL=\(response.finalURL.absoluteString, privacy: .public) executionEmpty=\(executionInput.isEmpty, privacy: .public)")
+        logger.info("ensureInitialized finalURL=\(response.finalURL.absoluteString, privacy: .public) executionEmpty=\(self.executionInput.isEmpty, privacy: .public)")
 #if DEBUG
-        print("[AUTH] init final=\(response.finalURL.absoluteString) executionEmpty=\(executionInput.isEmpty)")
+        print("[AUTH] init final=\(response.finalURL.absoluteString) executionEmpty=\(self.executionInput.isEmpty)")
 #endif
 
         if executionInput.isEmpty {
@@ -400,4 +400,3 @@ private extension Data {
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 }
-

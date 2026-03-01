@@ -262,6 +262,8 @@ final class CampusCardAPI {
     func analyzeWeekdayVsWeekend(_ transactions: [CardTransaction]) -> (weekday: DayTypeStats, weekend: DayTypeStats) {
         var weekdayAmounts: [Double] = []
         var weekendAmounts: [Double] = []
+        var weekdayDays: Set<String> = []
+        var weekendDays: Set<String> = []
 
         for tx in transactions where tx.amount < 0 {
             let dayString = String(tx.time.prefix(10))
@@ -269,14 +271,16 @@ final class CampusCardAPI {
             let weekday = Calendar.current.component(.weekday, from: date)
             if (2...6).contains(weekday) {
                 weekdayAmounts.append(-tx.amount)
+                weekdayDays.insert(dayString)
             } else {
                 weekendAmounts.append(-tx.amount)
+                weekendDays.insert(dayString)
             }
         }
 
         return (
-            dayTypeStats(label: "工作日", amounts: weekdayAmounts),
-            dayTypeStats(label: "周末", amounts: weekendAmounts)
+            dayTypeStats(label: "工作日", amounts: weekdayAmounts, dayCount: weekdayDays.count),
+            dayTypeStats(label: "周末", amounts: weekendAmounts, dayCount: weekendDays.count)
         )
     }
 
@@ -322,7 +326,7 @@ final class CampusCardAPI {
         return "其他"
     }
 
-    private func dayTypeStats(label: String, amounts: [Double]) -> DayTypeStats {
+    private func dayTypeStats(label: String, amounts: [Double], dayCount: Int) -> DayTypeStats {
         let total = amounts.reduce(0, +)
         let count = amounts.count
         return DayTypeStats(
@@ -330,7 +334,7 @@ final class CampusCardAPI {
             count: count,
             totalAmount: total,
             avgPerTransaction: count > 0 ? total / Double(count) : 0,
-            avgPerDay: count > 0 ? total / Double(max(1, Set(amounts).count)) : 0
+            avgPerDay: dayCount > 0 ? total / Double(dayCount) : 0
         )
     }
 

@@ -87,7 +87,7 @@ enum LoginType: String, CaseIterable, Identifiable {
         case .jwxt:
             return "课表 / 考试 / 教材"
         case .jwapp:
-            return "成绩 / GPA"
+            return "成绩查询"
         case .ywtb:
             return "学期周次 / 个人信息"
         case .library:

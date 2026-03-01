@@ -128,7 +128,7 @@ final class AppLoginState: ObservableObject {
                 }
                 lastLoginError = library.diagnosticInfo.isEmpty ? "图书馆认证状态失效" : library.diagnosticInfo
                 libraryLogin = nil
-                logger.error("autoLogin library cached session invalid: \(self.lastLoginError ?? \"\", privacy: .public)")
+                logger.error("autoLogin library cached session invalid: \(self.lastLoginError ?? "", privacy: .public)")
             } else {
                 logger.info("autoLogin use cached type=\(type.rawValue, privacy: .public)")
                 return cached

@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 
 struct CampusNotification: Identifiable, Hashable {
     let id = UUID()
@@ -11,23 +11,19 @@ struct CampusNotification: Identifiable, Hashable {
 }
 
 enum SourceCategory: String, CaseIterable, Identifiable {
-    case teaching
+    case general
     case engineering
     case science
-    case info
     case humanities
-    case other
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .teaching: return "教学管理"
+        case .general: return "综合"
         case .engineering: return "工学"
         case .science: return "理学"
-        case .info: return "信息"
         case .humanities: return "人文经管"
-        case .other: return "综合"
         }
     }
 }
@@ -35,6 +31,9 @@ enum SourceCategory: String, CaseIterable, Identifiable {
 enum NotificationSource: String, CaseIterable, Identifiable {
     case jwc
     case gs
+    case qxs
+    case fti
+    case xsc
     case me
     case ee
     case epe
@@ -42,10 +41,11 @@ enum NotificationSource: String, CaseIterable, Identifiable {
     case mse
     case clet
     case hsce
+    case se
     case math
     case phy
     case chem
-    case se
+    case slst
     case som
     case rwxy
     case sfs
@@ -54,10 +54,6 @@ enum NotificationSource: String, CaseIterable, Identifiable {
     case sppa
     case marx
     case xmtxy
-    case slst
-    case qxs
-    case fti
-    case xsc
 
     var id: String { rawValue }
 
@@ -87,7 +83,7 @@ enum NotificationSource: String, CaseIterable, Identifiable {
         case .slst: return "生命学院"
         case .qxs: return "钱学森书院"
         case .fti: return "未来技术学院"
-        case .xsc: return "学工部"
+        case .xsc: return "学生处"
         }
     }
 
@@ -123,18 +119,14 @@ enum NotificationSource: String, CaseIterable, Identifiable {
 
     var category: SourceCategory {
         switch self {
-        case .jwc, .gs:
-            return .teaching
-        case .me, .ee, .epe, .aero, .mse, .clet, .hsce:
+        case .jwc, .gs, .qxs, .fti, .xsc:
+            return .general
+        case .me, .ee, .epe, .aero, .mse, .clet, .hsce, .se:
             return .engineering
-        case .math, .phy, .chem:
+        case .math, .phy, .chem, .slst:
             return .science
-        case .se:
-            return .info
         case .som, .rwxy, .sfs, .law, .sef, .sppa, .marx, .xmtxy:
             return .humanities
-        case .slst, .qxs, .fti, .xsc:
-            return .other
         }
     }
 

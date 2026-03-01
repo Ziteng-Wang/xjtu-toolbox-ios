@@ -22,7 +22,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .schedule: return "课表 / 考试"
-        case .score: return "成绩 / GPA"
+        case .score: return "成绩查询"
         case .curriculum: return "培养进度"
         case .attendance: return "考勤"
         case .emptyRoom: return "空教室"
@@ -65,10 +65,11 @@ struct RootTabView: View {
 
     @State private var selectedTab = 0
     @State private var showLoginSheet = false
+    @State private var preferredLoginType: LoginType = .jwxt
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView(showLoginSheet: $showLoginSheet)
+            HomeView(showLoginSheet: $showLoginSheet, preferredLoginType: $preferredLoginType)
                 .tabItem {
                     Label("首页", systemImage: "house")
                 }
@@ -94,7 +95,7 @@ struct RootTabView: View {
         }
         .tint(.blue)
         .sheet(isPresented: $showLoginSheet) {
-            LoginSheetView()
+            LoginSheetView(initialLoginType: preferredLoginType)
                 .environmentObject(loginState)
         }
     }

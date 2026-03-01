@@ -4,12 +4,19 @@ struct LoginSheetView: View {
     @EnvironmentObject private var loginState: AppLoginState
     @Environment(\.dismiss) private var dismiss
 
+    let initialLoginType: LoginType
+
     @State private var username = ""
     @State private var password = ""
-    @State private var loginType: LoginType = .jwxt
+    @State private var loginType: LoginType
     @State private var isLoading = false
     @State private var message = ""
     @State private var showPassword = false
+
+    init(initialLoginType: LoginType = .jwxt) {
+        self.initialLoginType = initialLoginType
+        _loginType = State(initialValue: initialLoginType)
+    }
 
     var body: some View {
         NavigationStack {
@@ -89,6 +96,7 @@ struct LoginSheetView: View {
         .onAppear {
             username = loginState.savedUsername
             password = loginState.savedPassword
+            loginType = initialLoginType
         }
     }
 
