@@ -1,4 +1,5 @@
-﻿import SwiftUI
+import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @EnvironmentObject private var loginState: AppLoginState
@@ -38,6 +39,8 @@ struct HomeView: View {
                 Section("快捷入口") {
                     quickLink(title: "课表 / 考试", symbol: "calendar", destination: ScheduleScreen())
                     quickLink(title: "成绩 / GPA", symbol: "chart.bar.doc.horizontal", destination: ScoreScreen())
+                    quickLink(title: "付款码", symbol: "qrcode", destination: PaymentCodeScreen())
+                    quickLink(title: "培养进度", symbol: "list.bullet.clipboard", destination: CurriculumScreen())
                     quickLink(title: "空教室", symbol: "building.2", destination: EmptyRoomScreen())
                     quickLink(title: "通知", symbol: "bell", destination: NotificationScreen())
                 }
@@ -49,6 +52,7 @@ struct HomeView: View {
                     statusRow("考勤", loginState.attendanceLogin != nil)
                     statusRow("图书馆", loginState.libraryLogin != nil)
                     statusRow("校园卡", loginState.campusCardLogin != nil)
+                    statusRow("研究生评教", loginState.gsteLogin != nil)
                 }
             }
             .navigationTitle("首页")
@@ -97,6 +101,12 @@ struct AcademicView: View {
                     } label: {
                         Label("报表成绩", systemImage: "doc.text")
                     }
+
+                    NavigationLink {
+                        CurriculumScreen()
+                    } label: {
+                        Label("培养进度", systemImage: "list.bullet.clipboard")
+                    }
                 }
 
                 Section("评教") {
@@ -104,6 +114,12 @@ struct AcademicView: View {
                         JudgeScreen()
                     } label: {
                         Label("本科评教", systemImage: "checkmark.seal")
+                    }
+
+                    NavigationLink {
+                        GsteJudgeScreen()
+                    } label: {
+                        Label("研究生评教", systemImage: "graduationcap.circle")
                     }
                 }
 
@@ -128,6 +144,10 @@ struct AcademicView: View {
 struct ToolsView: View {
     @Binding var showLoginSheet: Bool
 
+    @State private var webVPNInput = ""
+    @State private var webVPNOutput = ""
+    @State private var reverseConvert = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -151,6 +171,12 @@ struct ToolsView: View {
                     }
 
                     NavigationLink {
+                        PaymentCodeScreen()
+                    } label: {
+                        Label("付款码", systemImage: "qrcode")
+                    }
+
+                    NavigationLink {
                         EmptyRoomScreen()
                     } label: {
                         Label("空教室", systemImage: "building.2")
@@ -161,6 +187,72 @@ struct ToolsView: View {
                     } label: {
                         Label("通知公告", systemImage: "bell")
                     }
+
+                    NavigationLink {
+                        YwtbScreen()
+                    } label: {
+                        Label("一网通办", systemImage: "person.text.rectangle")
+                    }
+
+                    NavigationLink {
+                        BrowserScreen()
+                    } label: {
+                        Label("内置浏览器", systemImage: "safari")
+                    }
+                }
+
+                Section("WebVPN 地址互转") {
+                    Picker("方向", selection: $reverseConvert) {
+                        Text("原始 -> VPN").tag(false)
+                        Text("VPN -> 原始").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+
+                    TextField(
+                        reverseConvert ? "输入 WebVPN 地址" : "输入校内地址",
+                        text: $webVPNInput
+                    )
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                    Button("转换") {
+                        let trimmed = webVPNInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else {
+                            webVPNOutput = ""
+                            return
+                        }
+
+                        if reverseConvert {
+                            if let vpnURL = URL(string: trimmed),
+                               let original = WebVPN.originalURL(from: vpnURL) {
+                                webVPNOutput = original.absoluteString
+                            } else {
+                                webVPNOutput = "无法解析该 WebVPN 地址"
+                            }
+                        } else {
+                            let source = normalizeSourceURL(trimmed)
+                            if let sourceURL = URL(string: source) {
+                                webVPNOutput = WebVPN.vpnURL(for: sourceURL).absoluteString
+                            } else {
+                                webVPNOutput = "地址格式错误"
+                            }
+                        }
+                    }
+
+                    if !webVPNOutput.isEmpty {
+                        Text(webVPNOutput)
+                            .font(.footnote)
+                            .foregroundStyle(webVPNOutput.hasPrefix("http") ? .primary : .red)
+                            .textSelection(.enabled)
+
+                        if webVPNOutput.hasPrefix("http") {
+                            NavigationLink {
+                                BrowserScreen(initialURL: webVPNOutput)
+                            } label: {
+                                Label("在内置浏览器中打开", systemImage: "arrow.up.right.square")
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle("工具")
@@ -170,6 +262,13 @@ struct ToolsView: View {
                 }
             }
         }
+    }
+
+    private func normalizeSourceURL(_ input: String) -> String {
+        if input.hasPrefix("http://") || input.hasPrefix("https://") {
+            return input
+        }
+        return "https://\(input)"
     }
 }
 
@@ -195,11 +294,66 @@ struct ProfileView: View {
                 Section("一网通办") {
                     if let info = loginState.ywtbUserInfo {
                         row("姓名", info.userName)
+                        row("学号", info.userUid)
                         row("身份", info.identityTypeName)
                         row("单位", info.organizationName)
                     } else {
                         Text("暂无个人信息")
                             .foregroundStyle(.secondary)
+                    }
+
+                    NavigationLink {
+                        YwtbScreen()
+                    } label: {
+                        Label("打开一网通办详情", systemImage: "person.text.rectangle")
+                    }
+                }
+
+                Section("NSA 个人信息") {
+                    if loginState.nsaLoading {
+                        ProgressView("正在加载...")
+                    } else if let profile = loginState.nsaProfile {
+                        HStack(spacing: 12) {
+                            if let data = loginState.nsaPhotoData,
+                               let image = UIImage(data: data) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.secondary.opacity(0.2))
+                                    .frame(width: 52, height: 52)
+                                    .overlay {
+                                        Text(String(profile.name.prefix(1)))
+                                            .font(.headline)
+                                    }
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(profile.name)
+                                    .font(.headline)
+                                Text(profile.studentId)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text("\(profile.college) \(profile.major)")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+
+                        ForEach(profile.details.prefix(10)) { item in
+                            row(item.label, item.value)
+                        }
+                    } else {
+                        Text(loginState.nsaError ?? "暂无 NSA 数据")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("刷新 NSA 信息") {
+                        Task { await loginState.loadNsaProfile(force: true) }
                     }
                 }
 
@@ -248,6 +402,12 @@ struct ProfileView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("登录") { showLoginSheet = true }
+                }
+            }
+            .task(id: loginState.isLoggedIn) {
+                if loginState.isLoggedIn,
+                   loginState.nsaProfile == nil {
+                    await loginState.loadNsaProfile()
                 }
             }
         }

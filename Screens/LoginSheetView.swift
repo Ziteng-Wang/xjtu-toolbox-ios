@@ -39,7 +39,7 @@ struct LoginSheetView: View {
 
                 Section("登录目标") {
                     Picker("系统", selection: $loginType) {
-                        ForEach(LoginType.allCases.filter { $0 != .gmis && $0 != .gste }) { type in
+                        ForEach(LoginType.allCases) { type in
                             VStack(alignment: .leading) {
                                 Text(type.label)
                                 Text(type.description)

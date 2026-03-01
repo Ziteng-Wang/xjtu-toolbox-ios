@@ -33,6 +33,7 @@ actor CredentialStore {
         defaults.removeObject(forKey: AppConstants.StorageKey.visitorID)
         defaults.removeObject(forKey: AppConstants.StorageKey.rsaPublicKey)
         defaults.removeObject(forKey: AppConstants.StorageKey.rsaPublicKeyTime)
+        clearNsaCache()
     }
 
     func saveVisitorID(_ value: String) {
@@ -55,6 +56,32 @@ actor CredentialStore {
             return nil
         }
         return defaults.string(forKey: AppConstants.StorageKey.rsaPublicKey)
+    }
+
+    func saveNsaProfile(_ profile: NsaStudentProfile) {
+        if let data = try? JSONEncoder().encode(profile) {
+            defaults.set(data, forKey: AppConstants.StorageKey.nsaProfile)
+        }
+    }
+
+    func loadNsaProfile() -> NsaStudentProfile? {
+        guard let data = defaults.data(forKey: AppConstants.StorageKey.nsaProfile) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(NsaStudentProfile.self, from: data)
+    }
+
+    func saveNsaPhoto(_ photo: Data) {
+        defaults.set(photo, forKey: AppConstants.StorageKey.nsaPhoto)
+    }
+
+    func loadNsaPhoto() -> Data? {
+        defaults.data(forKey: AppConstants.StorageKey.nsaPhoto)
+    }
+
+    func clearNsaCache() {
+        defaults.removeObject(forKey: AppConstants.StorageKey.nsaProfile)
+        defaults.removeObject(forKey: AppConstants.StorageKey.nsaPhoto)
     }
 
     private func saveKeychain(value: String, account: String) {

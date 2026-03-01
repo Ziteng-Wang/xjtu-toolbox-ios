@@ -5,6 +5,10 @@ final class AppLoginState: ObservableObject {
     @Published var activeUsername: String = ""
     @Published var isOnCampus: Bool?
     @Published var ywtbUserInfo: UserInfo?
+    @Published var nsaProfile: NsaStudentProfile?
+    @Published var nsaPhotoData: Data?
+    @Published var nsaLoading = false
+    @Published var nsaError: String?
 
     @Published var attendanceLogin: AttendanceLogin?
     @Published var jwxtLogin: JwxtLogin?
@@ -49,6 +53,8 @@ final class AppLoginState: ObservableObject {
             savedPassword = credential.password
             cachedVisitorID = await credentialStore.loadVisitorID()
             cachedRsaPublicKey = await credentialStore.loadRSAPublicKey()
+            nsaProfile = await credentialStore.loadNsaProfile()
+            nsaPhotoData = await credentialStore.loadNsaPhoto()
         }
 
         guard hasCredentials else { return }
@@ -78,6 +84,9 @@ final class AppLoginState: ObservableObject {
     func logout() async {
         activeUsername = ""
         ywtbUserInfo = nil
+        nsaProfile = nil
+        nsaPhotoData = nil
+        nsaError = nil
         attendanceLogin = nil
         jwxtLogin = nil
         jwappLogin = nil
@@ -94,6 +103,7 @@ final class AppLoginState: ObservableObject {
 
         await credentialStore.clearAll()
         await CookiePersistence.shared.clear()
+        await PaymentCodeAPI.clearCachedJWT()
     }
 
     func autoLogin(type: LoginType) async -> XJTULogin? {
@@ -150,6 +160,39 @@ final class AppLoginState: ObservableObject {
 
     func ensureLogin(type: LoginType) async -> Bool {
         await autoLogin(type: type) != nil
+    }
+
+    func loadNsaProfile(force: Bool = false) async {
+        if !force, nsaProfile != nil {
+            return
+        }
+
+        nsaLoading = true
+        nsaError = nil
+        defer { nsaLoading = false }
+
+        guard await ensureLogin(type: .jwxt),
+              let login = jwxtLogin else {
+            nsaError = "未登录教务系统"
+            return
+        }
+
+        do {
+            let api = NsaAPI(login: login)
+            let profile = try await api.getProfile()
+            let photo = try await api.getStudentPhoto(studentID: profile.studentId)
+
+            nsaProfile = profile
+            nsaPhotoData = photo
+            nsaError = nil
+
+            await credentialStore.saveNsaProfile(profile)
+            if let photo {
+                await credentialStore.saveNsaPhoto(photo)
+            }
+        } catch {
+            nsaError = error.localizedDescription
+        }
     }
 
     private func makeLogin(type: LoginType, useWebVPN: Bool) -> XJTULogin {

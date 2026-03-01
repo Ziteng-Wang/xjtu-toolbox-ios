@@ -30,7 +30,9 @@ struct NotificationScreen: View {
                     EmptyPlaceholder(title: isLoading ? "加载中" : "暂无通知", subtitle: "下拉刷新或更换来源")
                 } else {
                     ForEach(notifications) { item in
-                        Link(destination: URL(string: item.link) ?? URL(string: "https://xjtu.edu.cn")!) {
+                        NavigationLink {
+                            BrowserScreen(initialURL: item.link)
+                        } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(item.title)
                                     .font(.headline)

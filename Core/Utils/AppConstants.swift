@@ -16,6 +16,8 @@ enum AppConstants {
         static let gmisURL = "https://org.xjtu.edu.cn/openplatform/oauth/authorize?appId=1036&state=abcd1234&redirectUri=http://gmis.xjtu.edu.cn/pyxx/sso/login&responseType=code&scope=user_info"
         static let gsteURL = "https://cas.xjtu.edu.cn/login?TARGET=http%3A%2F%2Fgste.xjtu.edu.cn%2Flogin.do"
         static let webVPNLoginURL = "https://webvpn.xjtu.edu.cn/login?cas_login=true"
+        static let curriculumOverviewURL = "https://jwxt.xjtu.edu.cn/jwapp/sys/xsfacx/*default/index.do?EMAP_LANG=zh&forceApp=xsfacx"
+        static let curriculumCourseTreeURL = "https://jwxt.xjtu.edu.cn/jwapp/sys/jwpubapp/*default/index.do?EMAP_LANG=zh&forceApp=jwpubapp"
     }
 
     enum StorageKey {
@@ -25,6 +27,8 @@ enum AppConstants {
         static let rsaPublicKey = "xjtu.rsaPublicKey"
         static let rsaPublicKeyTime = "xjtu.rsaPublicKeyTime"
         static let cookies = "xjtu.cookies"
+        static let nsaProfile = "xjtu.nsa.profile"
+        static let nsaPhoto = "xjtu.nsa.photo"
     }
 
     static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"

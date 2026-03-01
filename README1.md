@@ -1,4 +1,4 @@
-﻿# xjtu-toolbox-ios
+# xjtu-toolbox-ios
 
 `xjtu-toolbox-ios` 是基于 `xjtu-toolbox-android` 迁移的 iOS 版本（Swift + SwiftUI）。
 
@@ -54,11 +54,11 @@ xjtu-toolbox-ios/
 - SwiftUI 页面：主页、教务、工具、我的，以及各业务模块页面。
 
 ## 运行方式
-1. 在 Xcode 中新建 iOS App 工程。
-2. 将 `XJTUToolboxIOS` 目录下 `.swift` 文件加入工程 target。
-3. 在 target 的 `Build Settings` 中确认可使用 `CommonCrypto`。
-4. iOS 17+ 运行（建议真机调试网络与 Cookie 行为）。
+1. 在 Xcode 中打开 `XJTUToolboxIOS.xcodeproj`。
+2. 选择 `XJTUToolboxIOS` target 与模拟器/真机。
+3. 直接运行（iOS 17+）。
 
 ## 说明
-- 本目录为逻辑迁移代码，未包含 `.xcodeproj` 工程文件。
-- 通知与部分评教页面解析存在站点模板差异，已做多策略兼容；若目标站点改版，需要更新解析规则。
+- 仓库已包含可运行工程文件 `XJTUToolboxIOS.xcodeproj`。
+- 通知与部分评教页面解析存在站点模板差异，若目标站点改版，需要更新解析规则。
+
