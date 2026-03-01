@@ -1,4 +1,5 @@
 ﻿import Foundation
+import OSLog
 
 struct HTTPResponse {
     let data: Data
@@ -14,6 +15,7 @@ actor HTTPClient {
     static let shared = HTTPClient()
 
     private let session: URLSession
+    private let logger = Logger(subsystem: "com.xjtu.toolbox.ios", category: "HTTPClient")
 
     init() {
         let configuration = URLSessionConfiguration.default
@@ -55,11 +57,14 @@ actor HTTPClient {
         request.httpMethod = "POST"
 
         if let form {
-            let encoded = form.map { key, value in
-                let escapedKey = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
-                let escapedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
-                return "\(escapedKey)=\(escapedValue)"
-            }.joined(separator: "&")
+            // Align with Android OkHttp FormBody: special chars in encrypted password
+            // (e.g. '+', '=', '/') must be encoded in x-www-form-urlencoded body.
+            let encoded = form
+                .sorted(by: { $0.key < $1.key })
+                .map { key, value in
+                    "\(Self.formURLEncode(key))=\(Self.formURLEncode(value))"
+                }
+                .joined(separator: "&")
             request.httpBody = encoded.data(using: .utf8)
             request.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
         } else if let json {
@@ -79,11 +84,23 @@ actor HTTPClient {
     }
 
     func execute(_ request: URLRequest) async throws -> HTTPResponse {
+        if let method = request.httpMethod, let url = request.url?.absoluteString {
+            logger.info("request \(method, privacy: .public) \(url, privacy: .public)")
+#if DEBUG
+            print("[HTTP] request \(method) \(url)")
+#endif
+        }
+
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse,
               let finalURL = http.url else {
             throw HTTPError.invalidResponse
         }
+
+        logger.info("response status=\(http.statusCode, privacy: .public) final=\(finalURL.absoluteString, privacy: .public)")
+#if DEBUG
+        print("[HTTP] response status=\(http.statusCode) final=\(finalURL.absoluteString)")
+#endif
         await CookiePersistence.shared.persist()
         return HTTPResponse(data: data, http: http, finalURL: finalURL)
     }
@@ -109,5 +126,11 @@ actor HTTPClient {
         for (k, v) in custom {
             request.setValue(v, forHTTPHeaderField: k)
         }
+    }
+
+    private static func formURLEncode(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._* "))
+        let encoded = raw.addingPercentEncoding(withAllowedCharacters: allowed) ?? raw
+        return encoded.replacingOccurrences(of: " ", with: "+")
     }
 }

@@ -1,5 +1,6 @@
 ﻿import Foundation
 import CommonCrypto
+import OSLog
 
 class XJTULogin {
     let loginURL: String
@@ -23,6 +24,7 @@ class XJTULogin {
     private var rawPassword: String?
     private var storedCaptcha = ""
     private var chooseAccountBody: String?
+    private let logger = Logger(subsystem: "com.xjtu.toolbox.ios", category: "XJTULogin")
 
     init(
         loginURL: String,
@@ -50,6 +52,10 @@ class XJTULogin {
         trustAgent: Bool = true
     ) async throws -> LoginResult {
         try await ensureInitialized()
+        logger.info("login start loginURL=\(self.loginURL, privacy: .public) hasLogin=\(self.hasLogin, privacy: .public)")
+#if DEBUG
+        print("[AUTH] login start url=\(loginURL) hasLogin=\(hasLogin)")
+#endif
 
         if chooseAccountBody != nil {
             return try await finishAccountChoice(accountType: accountType, trustAgent: trustAgent)
@@ -68,6 +74,7 @@ class XJTULogin {
         }
 
         if hasLogin {
+            logger.info("login skip because SSO session is already valid")
             return LoginResult(state: .success, message: "SSO 自动认证成功")
         }
 
@@ -76,6 +83,7 @@ class XJTULogin {
         }
 
         if mfaEnabled, mfaContext == nil {
+            logger.info("login mfa detect start")
             let detectResponse = try await client.post(
                 "https://login.xjtu.edu.cn/cas/mfa/detect",
                 headers: ["Referer": postURL],
@@ -90,6 +98,7 @@ class XJTULogin {
                let state = data["state"] as? String,
                let need = data["need"] as? Bool {
                 mfaContext = MFAContext(state: state, required: need)
+                logger.info("login mfa detect done required=\(need, privacy: .public)")
                 if need {
                     return LoginResult(state: .requireMFA, mfaContext: mfaContext)
                 }
@@ -119,14 +128,20 @@ class XJTULogin {
 
         let body = response.bodyString
         lastResponseBody = body
+        logger.info("login post done status=\(response.http.statusCode, privacy: .public) finalURL=\(response.finalURL.absoluteString, privacy: .public)")
+#if DEBUG
+        print("[AUTH] login post status=\(response.http.statusCode) final=\(response.finalURL.absoluteString)")
+#endif
 
         if response.http.statusCode == 401 {
             failCount += 1
+            logger.error("login failed: status=401")
             return LoginResult(state: .fail, message: "用户名或密码错误")
         }
 
         if let message = extractAlertMessage(from: body) {
             failCount += 1
+            logger.error("login failed: alert=\(message, privacy: .public)")
             return LoginResult(state: .fail, message: message)
         }
 
@@ -141,6 +156,7 @@ class XJTULogin {
         }
 
         try await postLogin(finalURL: response.finalURL, body: body)
+        logger.info("login success loginURL=\(self.loginURL, privacy: .public)")
         return LoginResult(state: .success)
     }
 
@@ -197,10 +213,24 @@ class XJTULogin {
             )
             rsaPublicKey = response.bodyString
         }
-        guard let key = rsaPublicKey else {
+
+        guard let cachedKey = rsaPublicKey else {
             throw HTTPError.invalidResponse
         }
-        return try RSAEncryptor.encryptPassword(password, withPEM: key)
+
+        do {
+            return try RSAEncryptor.encryptPassword(password, withPEM: cachedKey)
+        } catch {
+            // Android parity: if cached key is stale/corrupted, fetch once and retry.
+            logger.error("encryptPassword failed with cached key, refreshing key")
+            let response = try await client.get(
+                AppConstants.URLS.casPublicKey,
+                headers: ["Referer": postURL]
+            )
+            let freshKey = response.bodyString
+            rsaPublicKey = freshKey
+            return try RSAEncryptor.encryptPassword(password, withPEM: freshKey)
+        }
     }
 
     func postLogin(finalURL: URL, body: String) async throws {
@@ -261,6 +291,11 @@ class XJTULogin {
         let body = response.bodyString
         postURL = response.finalURL.absoluteString
         executionInput = extractExecutionValue(from: body)
+
+        logger.info("ensureInitialized finalURL=\(response.finalURL.absoluteString, privacy: .public) executionEmpty=\(executionInput.isEmpty, privacy: .public)")
+#if DEBUG
+        print("[AUTH] init final=\(response.finalURL.absoluteString) executionEmpty=\(executionInput.isEmpty)")
+#endif
 
         if executionInput.isEmpty {
             // Existing SSO cookies can skip the form page.

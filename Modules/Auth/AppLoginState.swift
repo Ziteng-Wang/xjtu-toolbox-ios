@@ -1,4 +1,5 @@
 ﻿import Foundation
+import OSLog
 
 @MainActor
 final class AppLoginState: ObservableObject {
@@ -22,6 +23,7 @@ final class AppLoginState: ObservableObject {
 
     private let client: HTTPClient
     private let credentialStore: CredentialStore
+    private let logger = Logger(subsystem: "com.xjtu.toolbox.ios", category: "AppLoginState")
 
     private var webVPNReady = false
     private var cachedVisitorID: String?
@@ -109,19 +111,26 @@ final class AppLoginState: ObservableObject {
     }
 
     func autoLogin(type: LoginType) async -> XJTULogin? {
-        lastLoginError = nil
+        logger.info("autoLogin start type=\(type.rawValue, privacy: .public) hasCredentials=\(self.hasCredentials, privacy: .public)")
+#if DEBUG
+        print("[AUTH] autoLogin start type=\(type.rawValue) hasCredentials=\(hasCredentials)")
+#endif
 
         if let cached = cachedLogin(for: type) {
             if type == .library, let library = cached as? LibraryLogin {
                 if library.seatSystemReady {
+                    logger.info("autoLogin use cached library session")
                     return library
                 }
                 if (try? await library.reAuthenticate()) == true {
+                    logger.info("autoLogin library reAuthenticate success")
                     return library
                 }
                 lastLoginError = library.diagnosticInfo.isEmpty ? "图书馆认证状态失效" : library.diagnosticInfo
                 libraryLogin = nil
+                logger.error("autoLogin library cached session invalid: \(self.lastLoginError ?? \"\", privacy: .public)")
             } else {
+                logger.info("autoLogin use cached type=\(type.rawValue, privacy: .public)")
                 return cached
             }
         }
@@ -152,6 +161,10 @@ final class AppLoginState: ObservableObject {
             if result.state == .requireAccountChoice {
                 result = try await login.login(accountType: .undergraduate)
             }
+            logger.info("autoLogin result type=\(type.rawValue, privacy: .public) state=\(String(describing: result.state), privacy: .public)")
+#if DEBUG
+            print("[AUTH] autoLogin result type=\(type.rawValue) state=\(result.state)")
+#endif
 
             guard result.state == .success else {
                 var message = loginFailureMessage(from: result)
@@ -159,6 +172,7 @@ final class AppLoginState: ObservableObject {
                     message += "（当前疑似校外网络，且 WebVPN 未连接成功）"
                 }
                 lastLoginError = message
+                logger.error("autoLogin failed type=\(type.rawValue, privacy: .public) message=\(message, privacy: .public)")
                 return nil
             }
 
@@ -176,6 +190,7 @@ final class AppLoginState: ObservableObject {
                 ywtbUserInfo = try? await api.getUserInfo()
             }
 
+            logger.info("autoLogin success type=\(type.rawValue, privacy: .public)")
             return login
         } catch {
             var message = readableLoginError(error)
@@ -183,6 +198,10 @@ final class AppLoginState: ObservableObject {
                 message += "（当前疑似校外网络，且 WebVPN 未连接成功）"
             }
             lastLoginError = message
+            logger.error("autoLogin error type=\(type.rawValue, privacy: .public) error=\(String(describing: error), privacy: .public)")
+#if DEBUG
+            print("[AUTH] autoLogin error type=\(type.rawValue) error=\(error)")
+#endif
             return nil
         }
     }
