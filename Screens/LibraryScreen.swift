@@ -15,6 +15,7 @@ struct LibraryScreen: View {
         .first?.value ?? "north2east"
 
     @State private var selectedAreaCode = defaultAreaCode
+    @State private var displayedAreaCode = defaultAreaCode
     @State private var seats: [SeatInfo] = []
     @State private var recommendations: [SeatInfo] = []
     @State private var areaStats: [String: AreaStats] = [:]
@@ -82,6 +83,14 @@ struct LibraryScreen: View {
                 .frame(width: 160, height: 48)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if !message.isEmpty {
+                messageCard
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: message)
     }
 
     private var loadingView: some View {
@@ -103,10 +112,6 @@ struct LibraryScreen: View {
                 areaSelectorCard
                 filterCard
 
-                if !message.isEmpty {
-                    messageCard
-                }
-
                 recommendationSection
                 seatSection
             }
@@ -118,15 +123,16 @@ struct LibraryScreen: View {
     }
 
     private var summaryCard: some View {
-        let stats = areaStats[selectedAreaCode]
+        let stats = areaStats[displayedAreaCode]
         let available = stats?.available ?? seats.filter(\.available).count
         let total = stats?.total ?? seats.count
         let occupancy = total > 0 ? Double(available) / Double(total) : 0
+        let safeOccupancy = min(max(occupancy, 0), 1)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedAreaName)
+                    Text(displayedAreaName)
                         .font(.headline)
                     Text("当前区域空闲情况")
                         .font(.caption)
@@ -136,7 +142,7 @@ struct LibraryScreen: View {
                 StatusBadge(text: "\(available)/\(total)", color: available > 0 ? .green : .gray)
             }
 
-            ProgressView(value: occupancy)
+            ProgressView(value: safeOccupancy)
                 .tint(available > 0 ? .green : .gray)
 
             HStack(spacing: 10) {
@@ -314,8 +320,9 @@ struct LibraryScreen: View {
 
     private var messageCard: some View {
         let success = message.contains("成功")
-        let failed = message.contains("失败") || message.contains("未登录")
-        let color: Color = success ? .green : (failed ? .red : .secondary)
+        let failed = message.contains("失败") || message.contains("未登录") || message.contains("未生效")
+        let warning = !failed && (message.contains("确认") || message.contains("核对"))
+        let color: Color = success ? .green : (failed ? .red : (warning ? .orange : .secondary))
 
         return HStack(spacing: 8) {
             Image(systemName: success ? "checkmark.circle.fill" : (failed ? "exclamationmark.triangle.fill" : "info.circle"))
@@ -323,7 +330,15 @@ struct LibraryScreen: View {
             Text(message)
                 .font(.footnote)
                 .foregroundStyle(color)
+                .lineLimit(2)
             Spacer()
+            Button {
+                message = ""
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(12)
         .background(
@@ -453,6 +468,10 @@ struct LibraryScreen: View {
         areaOptions.first(where: { $0.code == selectedAreaCode })?.name ?? "未知区域"
     }
 
+    private var displayedAreaName: String {
+        areaOptions.first(where: { $0.code == displayedAreaCode })?.name ?? selectedAreaName
+    }
+
     private var filteredSeats: [SeatInfo] {
         var list = seats
 
@@ -469,7 +488,7 @@ struct LibraryScreen: View {
     }
 
     @MainActor
-    private func loadData() async {
+    private func loadData(preserveMessage: Bool = false) async {
         isLoading = true
         defer {
             isLoading = false
@@ -497,7 +516,10 @@ struct LibraryScreen: View {
             areaStats = stats
             recommendations = api.recommendSeats(list)
             myBooking = currentBooking
-            message = ""
+            displayedAreaCode = selectedAreaCode
+            if !preserveMessage {
+                message = ""
+            }
         case let .authError(msg, _):
             message = msg
             seats = []
@@ -526,9 +548,9 @@ struct LibraryScreen: View {
         defer { pendingOperationText = nil }
 
         let api = LibraryAPI(login: login)
-        let result = await api.bookSeat(seatID: seatID, areaCode: selectedAreaCode, autoSwap: true)
+        let result = await api.bookSeat(seatID: seatID, areaCode: displayedAreaCode, autoSwap: true)
+        await loadData(preserveMessage: true)
         message = result.message
-        await loadData()
     }
 
     @MainActor
@@ -569,8 +591,8 @@ struct LibraryScreen: View {
 
         let api = LibraryAPI(login: login)
         let result = await api.executeAction(url)
+        await loadData(preserveMessage: true)
         message = "\(label)：\(result.message)"
-        await loadData()
     }
 
     private func bookingActions(_ booking: MyBookingInfo) -> [(label: String, url: String)] {

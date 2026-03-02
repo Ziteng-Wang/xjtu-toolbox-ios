@@ -7,7 +7,50 @@ struct HTTPResponse {
     let finalURL: URL
 
     var bodyString: String {
-        String(data: data, encoding: .utf8) ?? ""
+        decodeBody(data: data, response: http)
+    }
+
+    private func decodeBody(data: Data, response: HTTPURLResponse) -> String {
+        guard !data.isEmpty else {
+            return ""
+        }
+
+        if let charset = response.textEncodingName,
+           let encoding = String.Encoding.ianaCharset(charset),
+           let text = String(data: data, encoding: encoding) {
+            return text
+        }
+
+        for encoding in Self.fallbackEncodings {
+            if let text = String(data: data, encoding: encoding) {
+                return text
+            }
+        }
+
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static var fallbackEncodings: [String.Encoding] {
+        var list: [String.Encoding] = [.utf8]
+        for charset in ["gb18030", "gbk", "gb2312"] {
+            if let encoding = String.Encoding.ianaCharset(charset),
+               !list.contains(where: { $0.rawValue == encoding.rawValue }) {
+                list.append(encoding)
+            }
+        }
+        list.append(.isoLatin1)
+        return list
+    }
+}
+
+private extension String.Encoding {
+    static func ianaCharset(_ name: String) -> String.Encoding? {
+        let cfEncoding = CFStringConvertIANACharSetNameToEncoding(name as CFString)
+        guard cfEncoding != kCFStringEncodingInvalidId else {
+            return nil
+        }
+        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
+        return String.Encoding(rawValue: nsEncoding)
     }
 }
 

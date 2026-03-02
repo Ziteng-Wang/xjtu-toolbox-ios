@@ -22,7 +22,6 @@ xjtu-toolbox-ios/
    │  ├─ Auth/
    │  ├─ Schedule/
    │  ├─ JWApp/
-   │  ├─ ScoreReport/
    │  ├─ Attendance/
    │  ├─ EmptyRoom/
    │  ├─ CampusCard/
@@ -43,7 +42,6 @@ xjtu-toolbox-ios/
 - 核心 API：
   - 课表/考试/教材 `ScheduleAPI`
   - 成绩/GPA `JWAppAPI`
-  - 报表成绩 `ScoreReportAPI`
   - 考勤 `AttendanceAPI`
   - 空教室 `EmptyRoomAPI`
   - 校园卡 `CampusCardAPI`
@@ -61,4 +59,3 @@ xjtu-toolbox-ios/
 ## 说明
 - 仓库已包含可运行工程文件 `XJTUToolboxIOS.xcodeproj`。
 - 通知与部分评教页面解析存在站点模板差异，若目标站点改版，需要更新解析规则。
-

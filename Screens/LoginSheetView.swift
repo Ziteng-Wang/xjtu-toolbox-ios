@@ -239,6 +239,9 @@ struct LoginSheetView: View {
 
         if success {
             message = "登录成功"
+            Task(priority: .background) { @MainActor in
+                _ = await loginState.ensureLogin(type: .jwapp)
+            }
             try? await Task.sleep(nanoseconds: 450_000_000)
             dismiss()
         } else {

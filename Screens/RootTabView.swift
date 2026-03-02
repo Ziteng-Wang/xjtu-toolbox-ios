@@ -11,7 +11,6 @@ enum AppDestination: String, CaseIterable, Identifiable {
     case library
     case campusCard
     case paymentCode
-    case scoreReport
     case judge
     case gsteJudge
     case gmis
@@ -31,7 +30,6 @@ enum AppDestination: String, CaseIterable, Identifiable {
         case .library: return "图书馆"
         case .campusCard: return "校园卡"
         case .paymentCode: return "付款码"
-        case .scoreReport: return "报表成绩"
         case .judge: return "评教"
         case .gsteJudge: return "研究生评教"
         case .gmis: return "GMIS"
@@ -51,7 +49,6 @@ enum AppDestination: String, CaseIterable, Identifiable {
         case .library: return "book"
         case .campusCard: return "creditcard"
         case .paymentCode: return "qrcode"
-        case .scoreReport: return "doc.text"
         case .judge: return "checkmark.seal"
         case .gsteJudge: return "graduationcap.circle"
         case .gmis: return "graduationcap"

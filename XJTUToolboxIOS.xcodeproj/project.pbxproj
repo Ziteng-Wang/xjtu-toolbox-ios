@@ -34,7 +34,6 @@
         000000000000000000000041 /* NsaAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000040 /* NsaAPI.swift */; };
         000000000000000000000043 /* PaymentCodeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000042 /* PaymentCodeAPI.swift */; };
         000000000000000000000045 /* ScheduleAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000044 /* ScheduleAPI.swift */; };
-        000000000000000000000047 /* ScoreReportAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000046 /* ScoreReportAPI.swift */; };
         000000000000000000000049 /* YWTBAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000048 /* YWTBAPI.swift */; };
         00000000000000000000004B /* AttendanceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000004A /* AttendanceScreen.swift */; };
         00000000000000000000004D /* BrowserScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000004C /* BrowserScreen.swift */; };
@@ -51,7 +50,6 @@
         000000000000000000000063 /* PaymentCodeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000062 /* PaymentCodeScreen.swift */; };
         000000000000000000000065 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000064 /* RootTabView.swift */; };
         000000000000000000000067 /* ScheduleScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000066 /* ScheduleScreen.swift */; };
-        000000000000000000000069 /* ScoreReportScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000068 /* ScoreReportScreen.swift */; };
         00000000000000000000006B /* ScoreScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000006A /* ScoreScreen.swift */; };
         00000000000000000000006D /* YwtbScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000006C /* YwtbScreen.swift */; };
 /* End PBXBuildFile section */
@@ -84,7 +82,6 @@
         000000000000000000000040 /* NsaAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Modules/NSA/NsaAPI.swift"; sourceTree = "<group>"; };
         000000000000000000000042 /* PaymentCodeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Modules/PaymentCode/PaymentCodeAPI.swift"; sourceTree = "<group>"; };
         000000000000000000000044 /* ScheduleAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Modules/Schedule/ScheduleAPI.swift"; sourceTree = "<group>"; };
-        000000000000000000000046 /* ScoreReportAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Modules/ScoreReport/ScoreReportAPI.swift"; sourceTree = "<group>"; };
         000000000000000000000048 /* YWTBAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Modules/YWTB/YWTBAPI.swift"; sourceTree = "<group>"; };
         00000000000000000000004A /* AttendanceScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/AttendanceScreen.swift"; sourceTree = "<group>"; };
         00000000000000000000004C /* BrowserScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/BrowserScreen.swift"; sourceTree = "<group>"; };
@@ -101,7 +98,6 @@
         000000000000000000000062 /* PaymentCodeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/PaymentCodeScreen.swift"; sourceTree = "<group>"; };
         000000000000000000000064 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/RootTabView.swift"; sourceTree = "<group>"; };
         000000000000000000000066 /* ScheduleScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/ScheduleScreen.swift"; sourceTree = "<group>"; };
-        000000000000000000000068 /* ScoreReportScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/ScoreReportScreen.swift"; sourceTree = "<group>"; };
         00000000000000000000006A /* ScoreScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/ScoreScreen.swift"; sourceTree = "<group>"; };
         00000000000000000000006C /* YwtbScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screens/YwtbScreen.swift"; sourceTree = "<group>"; };
         000000000000000000000006 /* XJTUToolboxIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XJTUToolboxIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -164,7 +160,6 @@
                 000000000000000000000040 /* NsaAPI.swift */,
                 000000000000000000000042 /* PaymentCodeAPI.swift */,
                 000000000000000000000044 /* ScheduleAPI.swift */,
-                000000000000000000000046 /* ScoreReportAPI.swift */,
                 000000000000000000000048 /* YWTBAPI.swift */,
                 00000000000000000000004A /* AttendanceScreen.swift */,
                 00000000000000000000004C /* BrowserScreen.swift */,
@@ -181,7 +176,6 @@
                 000000000000000000000062 /* PaymentCodeScreen.swift */,
                 000000000000000000000064 /* RootTabView.swift */,
                 000000000000000000000066 /* ScheduleScreen.swift */,
-                000000000000000000000068 /* ScoreReportScreen.swift */,
                 00000000000000000000006A /* ScoreScreen.swift */,
                 00000000000000000000006C /* YwtbScreen.swift */,
             );
@@ -283,7 +277,6 @@
                 000000000000000000000041 /* NsaAPI.swift in Sources */,
                 000000000000000000000043 /* PaymentCodeAPI.swift in Sources */,
                 000000000000000000000045 /* ScheduleAPI.swift in Sources */,
-                000000000000000000000047 /* ScoreReportAPI.swift in Sources */,
                 000000000000000000000049 /* YWTBAPI.swift in Sources */,
                 00000000000000000000004B /* AttendanceScreen.swift in Sources */,
                 00000000000000000000004D /* BrowserScreen.swift in Sources */,
@@ -300,7 +293,6 @@
                 000000000000000000000063 /* PaymentCodeScreen.swift in Sources */,
                 000000000000000000000065 /* RootTabView.swift in Sources */,
                 000000000000000000000067 /* ScheduleScreen.swift in Sources */,
-                000000000000000000000069 /* ScoreReportScreen.swift in Sources */,
                 00000000000000000000006B /* ScoreScreen.swift in Sources */,
                 00000000000000000000006D /* YwtbScreen.swift in Sources */,
             );

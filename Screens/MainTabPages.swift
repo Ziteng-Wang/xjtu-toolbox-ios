@@ -1,11 +1,19 @@
 import SwiftUI
 import UIKit
 
+private enum HomeAvatarStyle: String {
+    case campusPhoto
+    case animeGirl
+    case initial
+}
+
 struct HomeView: View {
     @EnvironmentObject private var loginState: AppLoginState
     @Binding var showLoginSheet: Bool
+    @AppStorage("xjtu.home.avatar.style") private var avatarStyleRaw = HomeAvatarStyle.campusPhoto.rawValue
     @State private var quickLoginType: LoginType?
     @State private var quickLoginError: String?
+    @State private var showAvatarStylePicker = false
 
     private let quickEntries: [AppDestination] = [
         .campusCard, .schedule, .paymentCode, .notification
@@ -59,6 +67,20 @@ struct HomeView: View {
                     quickLoginError = nil
                 }
             }
+            .confirmationDialog("选择头像", isPresented: $showAvatarStylePicker, titleVisibility: .visible) {
+                if loginState.nsaPhotoData != nil {
+                    Button("使用教务照片") {
+                        avatarStyleRaw = HomeAvatarStyle.campusPhoto.rawValue
+                    }
+                }
+                Button("使用二次元头像") {
+                    avatarStyleRaw = HomeAvatarStyle.animeGirl.rawValue
+                }
+                Button("使用字母头像") {
+                    avatarStyleRaw = HomeAvatarStyle.initial.rawValue
+                }
+                Button("取消", role: .cancel) {}
+            }
         }
     }
 
@@ -69,8 +91,29 @@ struct HomeView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 14) {
-                profileAvatar
-                    .frame(width: 58, height: 58)
+                if loginState.isLoggedIn {
+                    Button {
+                        showAvatarStylePicker = true
+                    } label: {
+                        profileAvatar
+                            .frame(width: 58, height: 58)
+                            .overlay(alignment: .bottomTrailing) {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 20, height: 20)
+                                    .overlay {
+                                        Image(systemName: "slider.horizontal.3")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(.blue)
+                                    }
+                                    .shadow(color: Color.black.opacity(0.12), radius: 3, y: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    profileAvatar
+                        .frame(width: 58, height: 58)
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(loginState.isLoggedIn ? "你好，\(displayName)" : "西交校园工具箱")
@@ -247,21 +290,85 @@ struct HomeView: View {
 
     private var profileAvatar: some View {
         Group {
-            if let data = loginState.nsaPhotoData, let image = UIImage(data: data), loginState.isLoggedIn {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                HStack {
-                    Text(String(displayName.prefix(1)))
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(Color.blue)
+            switch selectedAvatarStyle {
+            case .campusPhoto:
+                if let data = loginState.nsaPhotoData, let image = UIImage(data: data), loginState.isLoggedIn {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    initialAvatar
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.blue.opacity(0.16))
+            case .animeGirl:
+                animeAvatar
+            case .initial:
+                initialAvatar
             }
         }
         .clipShape(Circle())
+    }
+
+    private var selectedAvatarStyle: HomeAvatarStyle {
+        HomeAvatarStyle(rawValue: avatarStyleRaw) ?? .campusPhoto
+    }
+
+    private var initialAvatar: some View {
+        HStack {
+            Text(String(displayName.prefix(1)))
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Color.blue)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.blue.opacity(0.16))
+    }
+
+    private var animeAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.44, green: 0.68, blue: 0.96), Color(red: 0.92, green: 0.56, blue: 0.84)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Circle()
+                .fill(Color(red: 1.0, green: 0.92, blue: 0.86))
+                .frame(width: 38, height: 38)
+                .offset(y: 9)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(red: 0.24, green: 0.28, blue: 0.54))
+                .frame(width: 48, height: 22)
+                .offset(y: -11)
+            Circle()
+                .fill(Color(red: 0.24, green: 0.28, blue: 0.54))
+                .frame(width: 40, height: 30)
+                .offset(y: -18)
+            Capsule()
+                .fill(Color(red: 0.16, green: 0.2, blue: 0.38))
+                .frame(width: 5, height: 8)
+                .offset(x: -7, y: 10)
+            Capsule()
+                .fill(Color(red: 0.16, green: 0.2, blue: 0.38))
+                .frame(width: 5, height: 8)
+                .offset(x: 7, y: 10)
+            Capsule()
+                .fill(Color(red: 0.93, green: 0.41, blue: 0.6))
+                .frame(width: 8, height: 3)
+                .offset(y: 18)
+            Circle()
+                .fill(Color(red: 0.98, green: 0.68, blue: 0.78).opacity(0.5))
+                .frame(width: 6, height: 6)
+                .offset(x: -12, y: 15)
+            Circle()
+                .fill(Color(red: 0.98, green: 0.68, blue: 0.78).opacity(0.5))
+                .frame(width: 6, height: 6)
+                .offset(x: 12, y: 15)
+            Image(systemName: "sparkles")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .offset(x: 15, y: -17)
+        }
     }
 
     private var displayName: String {
@@ -429,8 +536,6 @@ struct HomeView: View {
             CampusCardScreen()
         case .paymentCode:
             PaymentCodeScreen()
-        case .scoreReport:
-            ScoreReportScreen()
         case .judge:
             JudgeScreen()
         case .gsteJudge:
@@ -481,8 +586,6 @@ private extension AppDestination {
             return "本科评教"
         case .gmis:
             return "GMIS"
-        case .scoreReport:
-            return "报表成绩"
         case .gsteJudge:
             return "研究生评教"
         case .browser:
@@ -516,8 +619,6 @@ private extension AppDestination {
             return "余额与消费账单"
         case .paymentCode:
             return "校园支付码"
-        case .scoreReport:
-            return "细化成绩与报表"
         case .gsteJudge:
             return "研究生课程评教"
         case .browser:
@@ -537,7 +638,7 @@ private extension AppDestination {
             return .orange
         case .curriculum:
             return .mint
-        case .attendance, .scoreReport:
+        case .attendance:
             return .green
         case .emptyRoom, .browser:
             return .cyan
@@ -550,7 +651,7 @@ private extension AppDestination {
         switch self {
         case .schedule, .curriculum, .judge, .paymentCode:
             return .jwxt
-        case .score, .scoreReport:
+        case .score:
             return .jwapp
         case .attendance:
             return .attendance
@@ -598,15 +699,6 @@ struct AcademicView: View {
                             color: .blue
                         ) {
                             ScoreScreen()
-                        }
-
-                        academicCard(
-                            title: "报表成绩",
-                            subtitle: "细化成绩报表",
-                            icon: "doc.text",
-                            color: .green
-                        ) {
-                            ScoreReportScreen()
                         }
 
                         academicCard(
@@ -782,43 +874,43 @@ struct ToolsView: View {
     @State private var webVPNOutput = ""
     @State private var reverseConvert = false
 
+    private enum ToolRoute: String, Identifiable {
+        case attendance
+        case library
+        case campusCard
+        case paymentCode
+        case emptyRoom
+        case notification
+        case ywtb
+        case browser
+
+        var id: String { rawValue }
+    }
+
+    private struct ToolItem: Identifiable {
+        let route: ToolRoute
+        let title: String
+        let subtitle: String
+        let icon: String
+        let color: Color
+        let tag: String
+
+        var id: ToolRoute { route }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     toolsHeader
+                    featuredSection
+                    servicesSection
 
-                    sectionTitle("常用工具", subtitle: "常见服务快速入口")
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        toolCard(title: "考勤查询", subtitle: "进出校记录", icon: "person.badge.clock", color: .green) {
-                            AttendanceScreen()
-                        }
-                        toolCard(title: "图书馆座位", subtitle: "查空位与预约", icon: "chair.lounge", color: .teal) {
-                            LibraryScreen()
-                        }
-                        toolCard(title: "校园卡", subtitle: "余额与消费", icon: "creditcard", color: .blue) {
-                            CampusCardScreen()
-                        }
-                        toolCard(title: "付款码", subtitle: "校园支付码", icon: "qrcode", color: .indigo) {
-                            PaymentCodeScreen()
-                        }
-                        toolCard(title: "空教室", subtitle: "按时段筛选", icon: "building.2", color: .cyan) {
-                            EmptyRoomScreen()
-                        }
-                        toolCard(title: "通知公告", subtitle: "教务信息汇总", icon: "bell", color: .orange) {
-                            NotificationScreen()
-                        }
-                        toolCard(title: "一网通办", subtitle: "统一服务入口", icon: "person.text.rectangle", color: .indigo) {
-                            YwtbScreen()
-                        }
-                        toolCard(title: "内置浏览器", subtitle: "校园网页访问", icon: "safari", color: .cyan) {
-                            BrowserScreen()
-                        }
-                    }
-
-                    sectionTitle("WebVPN 地址互转", subtitle: "校内地址与 VPN 地址转换")
+                    sectionTitle("WebVPN 地址互转", subtitle: "校内地址与 VPN 地址一键转换")
                     webVPNConverterCard
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
             .scrollIndicators(.hidden)
             .background(Color(uiColor: .systemGroupedBackground))
@@ -833,29 +925,88 @@ struct ToolsView: View {
         }
     }
 
+    private var featuredTools: [ToolItem] {
+        [
+            ToolItem(route: .campusCard, title: "校园卡", subtitle: "余额、流水与消费分析", icon: "creditcard", color: .blue, tag: "生活高频"),
+            ToolItem(route: .paymentCode, title: "付款码", subtitle: "校园支付快捷码", icon: "qrcode", color: .indigo, tag: "移动支付"),
+            ToolItem(route: .library, title: "图书馆座位", subtitle: "查空位与预约", icon: "chair.lounge", color: .teal, tag: "自习必备"),
+            ToolItem(route: .attendance, title: "考勤查询", subtitle: "进出校记录追踪", icon: "person.badge.clock", color: .green, tag: "进出记录")
+        ]
+    }
+
+    private var serviceTools: [ToolItem] {
+        [
+            ToolItem(route: .emptyRoom, title: "空教室", subtitle: "按教学楼与时段筛选", icon: "building.2", color: .cyan, tag: "教室检索"),
+            ToolItem(route: .notification, title: "通知公告", subtitle: "教务信息集中查看", icon: "bell", color: .orange, tag: "消息聚合"),
+            ToolItem(route: .ywtb, title: "一网通办", subtitle: "统一服务入口", icon: "person.text.rectangle", color: .indigo, tag: "统一认证"),
+            ToolItem(route: .browser, title: "内置浏览器", subtitle: "校园站点快速访问", icon: "safari", color: .cyan, tag: "网页工具")
+        ]
+    }
+
     private var toolsHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("工具箱")
                         .font(.title2.weight(.bold))
-                    Text("学习与校园生活高频能力")
+                    Text("生活缴费、学习查询与校园服务一屏直达")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Color.indigo)
+            }
+
+            HStack(spacing: 8) {
                 StatusBadge(text: networkModeText, color: networkModeColor)
+                StatusBadge(text: "已连接 \(connectedServiceCount) 项服务", color: .blue)
             }
         }
         .padding(16)
-        .background(
-            LinearGradient(
-                colors: [Color.indigo.opacity(0.14), Color(uiColor: .secondarySystemBackground)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
+        .background {
+            ZStack {
+                LinearGradient(
+                    colors: [Color.indigo.opacity(0.16), Color.cyan.opacity(0.12), Color(uiColor: .secondarySystemBackground)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Circle()
+                    .fill(Color.white.opacity(0.28))
+                    .frame(width: 140, height: 140)
+                    .offset(x: 120, y: -70)
+                Circle()
+                    .fill(Color.indigo.opacity(0.16))
+                    .frame(width: 100, height: 100)
+                    .offset(x: -120, y: 55)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+    }
+
+    private var featuredSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("高频入口", subtitle: "常用工具优先展示")
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(featuredTools) { item in
+                    featuredToolCard(item)
+                }
+            }
+        }
+    }
+
+    private var servicesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("服务入口", subtitle: "全部工具与辅助能力")
+
+            VStack(spacing: 10) {
+                ForEach(serviceTools) { item in
+                    serviceRowCard(item)
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -870,40 +1021,127 @@ struct ToolsView: View {
     }
 
     @ViewBuilder
-    private func toolCard<Destination: View>(
-        title: String,
-        subtitle: String,
-        icon: String,
-        color: Color,
-        @ViewBuilder destination: () -> Destination
-    ) -> some View {
+    private func featuredToolCard(_ item: ToolItem) -> some View {
         NavigationLink {
-            destination().hideGlobalTabBarOnPush()
+            destinationView(for: item.route).hideGlobalTabBarOnPush()
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 36, height: 36)
-                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(item.color)
+                        .frame(width: 34, height: 34)
+                        .background(item.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Spacer()
+
+                    Text(item.tag)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.08), in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                if let status = serviceStatus(for: item.route) {
+                    StatusBadge(text: status.text, color: status.color)
+                }
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 136, alignment: .topLeading)
+            .background(
+                LinearGradient(
+                    colors: [item.color.opacity(0.16), Color(uiColor: .secondarySystemBackground)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(item.color.opacity(0.2), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
+    private func serviceRowCard(_ item: ToolItem) -> some View {
+        NavigationLink {
+            destinationView(for: item.route).hideGlobalTabBarOnPush()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(item.color)
+                    .frame(width: 36, height: 36)
+                    .background(item.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(item.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(item.tag)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func destinationView(for route: ToolRoute) -> some View {
+        switch route {
+        case .attendance:
+            AttendanceScreen()
+        case .library:
+            LibraryScreen()
+        case .campusCard:
+            CampusCardScreen()
+        case .paymentCode:
+            PaymentCodeScreen()
+        case .emptyRoom:
+            EmptyRoomScreen()
+        case .notification:
+            NotificationScreen()
+        case .ywtb:
+            YwtbScreen()
+        case .browser:
+            BrowserScreen()
+        }
+    }
+
     private var webVPNConverterCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Picker("方向", selection: $reverseConvert) {
                 Text("原始 -> VPN").tag(false)
                 Text("VPN -> 原始").tag(true)
@@ -920,28 +1158,12 @@ struct ToolsView: View {
             .padding(.vertical, 10)
             .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            Button("转换") {
-                let trimmed = webVPNInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else {
-                    webVPNOutput = ""
-                    return
-                }
-
-                if reverseConvert {
-                    if let vpnURL = URL(string: trimmed),
-                       let original = WebVPN.originalURL(from: vpnURL) {
-                        webVPNOutput = original.absoluteString
-                    } else {
-                        webVPNOutput = "无法解析该 WebVPN 地址"
-                    }
-                } else {
-                    let source = normalizeSourceURL(trimmed)
-                    if let sourceURL = URL(string: source) {
-                        webVPNOutput = WebVPN.vpnURL(for: sourceURL).absoluteString
-                    } else {
-                        webVPNOutput = "地址格式错误"
-                    }
-                }
+            Button {
+                convertWebVPNAddress()
+            } label: {
+                Label("生成地址", systemImage: "arrow.left.arrow.right.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
 
@@ -966,6 +1188,67 @@ struct ToolsView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(uiColor: .secondarySystemBackground))
         )
+    }
+
+    private func convertWebVPNAddress() {
+        let trimmed = webVPNInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            webVPNOutput = ""
+            return
+        }
+
+        if reverseConvert {
+            if let vpnURL = URL(string: trimmed),
+               let original = WebVPN.originalURL(from: vpnURL) {
+                webVPNOutput = original.absoluteString
+            } else {
+                webVPNOutput = "无法解析该 WebVPN 地址"
+            }
+        } else {
+            let source = normalizeSourceURL(trimmed)
+            if let sourceURL = URL(string: source) {
+                webVPNOutput = WebVPN.vpnURL(for: sourceURL).absoluteString
+            } else {
+                webVPNOutput = "地址格式错误"
+            }
+        }
+    }
+
+    private func serviceStatus(for route: ToolRoute) -> (text: String, color: Color)? {
+        switch route {
+        case .attendance:
+            return loginState.attendanceLogin == nil ? ("自动登录", .gray) : ("已连接", .green)
+        case .library:
+            return loginState.libraryLogin?.seatSystemReady == true ? ("已连接", .green) : ("自动登录", .gray)
+        case .campusCard:
+            return loginState.campusCardLogin == nil ? ("自动登录", .gray) : ("已连接", .green)
+        case .paymentCode:
+            return loginState.jwxtLogin == nil ? ("自动登录", .gray) : ("已连接", .green)
+        case .ywtb:
+            return loginState.ywtbLogin == nil ? ("自动登录", .gray) : ("已连接", .green)
+        case .emptyRoom, .notification, .browser:
+            return nil
+        }
+    }
+
+    private var connectedServiceCount: Int {
+        var count = 0
+        if loginState.attendanceLogin != nil {
+            count += 1
+        }
+        if loginState.libraryLogin?.seatSystemReady == true {
+            count += 1
+        }
+        if loginState.campusCardLogin != nil {
+            count += 1
+        }
+        if loginState.jwxtLogin != nil {
+            count += 1
+        }
+        if loginState.ywtbLogin != nil {
+            count += 1
+        }
+        return count
     }
 
     private var networkModeText: String {

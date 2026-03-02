@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import OSLog
 
 private enum CampusCardTab: String, CaseIterable, Identifiable {
     case overview = "概览"
@@ -51,6 +52,7 @@ private struct TransactionGroup: Identifiable {
 
 struct CampusCardScreen: View {
     @EnvironmentObject private var loginState: AppLoginState
+    private let logger = Logger(subsystem: "com.xjtu.toolbox.ios", category: "CampusCardScreen")
 
     @State private var isLoading = false
     @State private var hasLoaded = false
@@ -90,6 +92,7 @@ struct CampusCardScreen: View {
         }
         .task {
             guard !hasLoaded else { return }
+            restoreCachedSnapshot(range: selectedTimeRange)
             await loadData(range: selectedTimeRange)
         }
     }
@@ -843,6 +846,7 @@ struct CampusCardScreen: View {
                 Button {
                     guard selectedTimeRange != range else { return }
                     selectedTimeRange = range
+                    restoreCachedSnapshot(range: range)
                     Task { await loadData(range: range) }
                 } label: {
                     Text(range.rawValue)
@@ -894,39 +898,177 @@ struct CampusCardScreen: View {
     @MainActor
     private func loadData(range: CampusCardTimeRange) async {
         guard !isLoading else { return }
-        isLoading = true
-        defer {
-            isLoading = false
-            hasLoaded = true
-        }
 
+        let loadStartedAt = Date()
+        let hadLocalData = hasLoaded || cardInfo != nil || !transactions.isEmpty
+        isLoading = true
+        defer { isLoading = false }
+
+        let loginStartedAt = Date()
         guard await loginState.ensureLogin(type: .campusCard),
               let login = loginState.campusCardLogin else {
-            message = "未登录校园卡系统"
+            message = hadLocalData ? "刷新失败：未登录校园卡系统" : "未登录校园卡系统"
+            if !hadLocalData {
+                hasLoaded = false
+            }
+            logger.error("campus card load failed: login unavailable")
             return
         }
+        let loginElapsedMS = Int(Date().timeIntervalSince(loginStartedAt) * 1000)
 
         let endDate = Date()
         let startDate = Calendar.current.date(byAdding: .month, value: -range.months, to: endDate) ?? endDate
 
         do {
             let api = CampusCardAPI(login: login)
-            async let cardInfoTask = api.getCardInfo()
-            async let transactionsTask = api.getAllTransactions(startDate: startDate, endDate: endDate, maxPages: 50)
+            let cardInfoStartedAt = Date()
+            let info = try await api.getCardInfo()
+            let cardInfoElapsedMS = Int(Date().timeIntervalSince(cardInfoStartedAt) * 1000)
 
-            let info = try await cardInfoTask
-            let fetchedTransactions = try await transactionsTask.sorted { $0.time > $1.time }
+            let firstPageStartedAt = Date()
+            let firstPage = try await api.getTransactions(startDate: startDate, endDate: endDate, page: 1, pageSize: 50)
+            let firstPageElapsedMS = Int(Date().timeIntervalSince(firstPageStartedAt) * 1000)
 
-            cardInfo = info
-            transactions = fetchedTransactions
-            monthlyStats = api.calculateMonthlyStats(fetchedTransactions)
-            categorySpending = api.categorizeSpending(fetchedTransactions)
-            mealTimeStats = api.analyzeMealTimes(fetchedTransactions)
-            weekdayWeekend = api.analyzeWeekdayVsWeekend(fetchedTransactions)
-            message = fetchedTransactions.isEmpty ? "该时间范围内暂无交易记录" : ""
+            var fetchedTransactions = firstPage.list.sorted { $0.time > $1.time }
+            let initialAnalysis = analyzeTransactions(api: api, rows: fetchedTransactions)
+            applyLoadedData(
+                cardInfo: info,
+                rows: fetchedTransactions,
+                analysis: initialAnalysis,
+                userMessage: emptyMessage(for: fetchedTransactions)
+            )
+            hasLoaded = true
+            persistSnapshot(range: range)
+
+            let totalPages = min((firstPage.total + 49) / 50, 50)
+            var remainingElapsedMS = 0
+            var remainingCount = 0
+            if totalPages > 1 {
+                let remainingPages = Array(2...totalPages)
+                let remainingStartedAt = Date()
+                let remainingRows = await api.getTransactions(
+                    startDate: startDate,
+                    endDate: endDate,
+                    pages: remainingPages,
+                    pageSize: 50,
+                    maxConcurrent: 4
+                )
+                remainingElapsedMS = Int(Date().timeIntervalSince(remainingStartedAt) * 1000)
+                remainingCount = remainingRows.count
+
+                if !remainingRows.isEmpty {
+                    fetchedTransactions.append(contentsOf: remainingRows)
+                    fetchedTransactions.sort { $0.time > $1.time }
+
+                    let fullAnalysis = analyzeTransactions(api: api, rows: fetchedTransactions)
+                    applyLoadedData(
+                        cardInfo: info,
+                        rows: fetchedTransactions,
+                        analysis: fullAnalysis,
+                        userMessage: emptyMessage(for: fetchedTransactions)
+                    )
+                    persistSnapshot(range: range)
+                }
+            }
+
+            let totalElapsedMS = Int(Date().timeIntervalSince(loadStartedAt) * 1000)
+            logger.info(
+                "campus card load success range=\(range.rawValue, privacy: .public) loginMs=\(loginElapsedMS, privacy: .public) cardInfoMs=\(cardInfoElapsedMS, privacy: .public) firstPageMs=\(firstPageElapsedMS, privacy: .public) remainingMs=\(remainingElapsedMS, privacy: .public) remainingCount=\(remainingCount, privacy: .public) totalMs=\(totalElapsedMS, privacy: .public)"
+            )
         } catch {
-            message = "加载失败：\(error.localizedDescription)"
+            message = hadLocalData ? "刷新失败：\(error.localizedDescription)" : "加载失败：\(error.localizedDescription)"
+            if !hadLocalData {
+                hasLoaded = false
+            }
+            let totalElapsedMS = Int(Date().timeIntervalSince(loadStartedAt) * 1000)
+            logger.error("campus card load failed totalMs=\(totalElapsedMS, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func applyLoadedData(
+        cardInfo: CardInfo?,
+        rows: [CardTransaction],
+        analysis: CampusCardAnalysis,
+        userMessage: String
+    ) {
+        self.cardInfo = cardInfo
+        transactions = rows
+        monthlyStats = analysis.monthlyStats
+        categorySpending = analysis.categorySpending
+        mealTimeStats = analysis.mealTimeStats
+        weekdayWeekend = analysis.weekdayWeekend
+        message = userMessage
+    }
+
+    private func analyzeTransactions(api: CampusCardAPI, rows: [CardTransaction]) -> CampusCardAnalysis {
+        CampusCardAnalysis(
+            monthlyStats: api.calculateMonthlyStats(rows),
+            categorySpending: api.categorizeSpending(rows),
+            mealTimeStats: api.analyzeMealTimes(rows),
+            weekdayWeekend: api.analyzeWeekdayVsWeekend(rows)
+        )
+    }
+
+    private func emptyMessage(for rows: [CardTransaction]) -> String {
+        rows.isEmpty ? "该时间范围内暂无交易记录" : ""
+    }
+
+    private func persistSnapshot(range: CampusCardTimeRange) {
+        guard let username = cacheUsername else { return }
+        let snapshot = CampusCardSnapshot(
+            updatedAt: Date(),
+            cardInfo: cardInfo,
+            transactions: transactions,
+            monthlyStats: monthlyStats,
+            categorySpending: categorySpending,
+            mealTimeStats: mealTimeStats,
+            weekdayWeekend: weekdayWeekend.map { DayTypePair(weekday: $0.weekday, weekend: $0.weekend) },
+            message: message
+        )
+
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: campusCardCacheKey(for: range, username: username))
+    }
+
+    private func restoreCachedSnapshot(range: CampusCardTimeRange) {
+        guard let username = cacheUsername else { return }
+        let key = campusCardCacheKey(for: range, username: username)
+
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let snapshot = try? JSONDecoder().decode(CampusCardSnapshot.self, from: data) else {
+            return
+        }
+
+        cardInfo = snapshot.cardInfo
+        transactions = snapshot.transactions.sorted { $0.time > $1.time }
+        monthlyStats = snapshot.monthlyStats
+        categorySpending = snapshot.categorySpending
+        mealTimeStats = snapshot.mealTimeStats
+        if let pair = snapshot.weekdayWeekend {
+            weekdayWeekend = (weekday: pair.weekday, weekend: pair.weekend)
+        } else {
+            weekdayWeekend = nil
+        }
+        message = snapshot.message
+        hasLoaded = true
+
+        logger.info(
+            "campus card cache restore range=\(range.rawValue, privacy: .public) txCount=\(snapshot.transactions.count, privacy: .public)"
+        )
+    }
+
+    private var cacheUsername: String? {
+        let active = loginState.activeUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !active.isEmpty {
+            return active
+        }
+
+        let saved = loginState.savedUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        return saved.isEmpty ? nil : saved
+    }
+
+    private func campusCardCacheKey(for range: CampusCardTimeRange, username: String) -> String {
+        "xjtu.campuscard.cache.\(username).\(range.months)"
     }
 
     private var currentMonthStats: MonthlyStats? {
@@ -1144,4 +1286,27 @@ struct CampusCardScreen: View {
         formatter.dateFormat = "M月d日 EEEE"
         return formatter
     }()
+}
+
+private struct CampusCardAnalysis {
+    let monthlyStats: [MonthlyStats]
+    let categorySpending: [String: Double]
+    let mealTimeStats: [String: MealTimeStats]
+    let weekdayWeekend: (weekday: DayTypeStats, weekend: DayTypeStats)?
+}
+
+private struct DayTypePair: Codable {
+    let weekday: DayTypeStats
+    let weekend: DayTypeStats
+}
+
+private struct CampusCardSnapshot: Codable {
+    let updatedAt: Date
+    let cardInfo: CardInfo?
+    let transactions: [CardTransaction]
+    let monthlyStats: [MonthlyStats]
+    let categorySpending: [String: Double]
+    let mealTimeStats: [String: MealTimeStats]
+    let weekdayWeekend: DayTypePair?
+    let message: String
 }

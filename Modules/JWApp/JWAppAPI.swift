@@ -5,7 +5,7 @@ enum ScoreSource: String, Codable {
     case report
 }
 
-struct ScoreItem: Identifiable, Hashable {
+struct ScoreItem: Identifiable, Hashable, Codable {
     let id: String
     let termCode: String
     let courseName: String
@@ -45,7 +45,7 @@ struct ScoreDetail: Hashable {
     let itemList: [ScoreDetailItem]
 }
 
-struct TermScore: Identifiable, Hashable {
+struct TermScore: Identifiable, Hashable, Codable {
     var id: String { termCode }
     let termCode: String
     let termName: String
@@ -80,6 +80,54 @@ struct GPAInfo: Hashable {
     let averageScore: Double
     let totalCredits: Double
     let courseCount: Int
+}
+
+func scoreToGPA(_ score: Any?) -> Double? {
+    switch score {
+    case let number as NSNumber:
+        let value = number.doubleValue
+        switch value {
+        case 95...100: return 4.3
+        case 90..<95: return 4.0
+        case 85..<90: return 3.7
+        case 81..<85: return 3.3
+        case 78..<81: return 3.0
+        case 75..<78: return 2.7
+        case 72..<75: return 2.3
+        case 68..<72: return 2.0
+        case 64..<68: return 1.7
+        case 60..<64: return 1.3
+        default: return 0
+        }
+    case let raw as String:
+        let value = raw
+            .replacingOccurrences(of: "＋", with: "+")
+            .replacingOccurrences(of: "－", with: "-")
+            .removingInvisibleCharacters
+            .uppercased()
+
+        if let numeric = Double(value) {
+            return scoreToGPA(numeric)
+        }
+
+        switch value {
+        case "A+", "优+": return 4.3
+        case "A", "优": return 4.0
+        case "A-", "优-": return 3.7
+        case "B+", "良+": return 3.3
+        case "B", "良": return 3.0
+        case "B-", "良-": return 2.7
+        case "C+", "中+": return 2.3
+        case "C", "中": return 2.0
+        case "C-", "中-": return 1.7
+        case "D", "及格": return 1.3
+        case "F", "不及格": return 0.0
+        case "通过", "不通过": return nil
+        default: return nil
+        }
+    default:
+        return nil
+    }
 }
 
 func gradeToNumericScore(_ rawGrade: String) -> Double? {
@@ -170,7 +218,7 @@ final class JWAppAPI {
         let data = root["data"] as? [String: Any] ?? [:]
         let score = data.string("score")
         let serverGPA = data.double("gpa")
-        let effectiveGPA = serverGPA > 0 ? serverGPA : (ScoreReportAPI.scoreToGPA(score) ?? 0)
+        let effectiveGPA = serverGPA > 0 ? serverGPA : (scoreToGPA(score) ?? 0)
 
         let itemList = (data["itemList"] as? [[String: Any]] ?? []).map { item in
             let percentRaw = item.string("itemPercent")
@@ -272,7 +320,7 @@ final class JWAppAPI {
             }
 
             let apiGPA = (course.gpa ?? 0) > 0 ? course.gpa! : 0
-            let mappedGPA = ScoreReportAPI.scoreToGPA(clean) ?? apiGPA
+            let mappedGPA = scoreToGPA(clean) ?? apiGPA
             let finalGPA = max(apiGPA, mappedGPA)
             let numericScore = course.scoreValue ?? gradeToNumericScore(course.score) ?? 0
 

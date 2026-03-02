@@ -1,9 +1,11 @@
 import SwiftUI
+import OSLog
 
 struct ScoreScreen: View {
     @EnvironmentObject private var loginState: AppLoginState
 
     private let allTermCode = "__all_terms__"
+    private let logger = Logger(subsystem: "com.xjtu.toolbox.ios", category: "ScoreScreen")
 
     @State private var terms: [TermScore] = []
     @State private var selectedTermCode = "__all_terms__"
@@ -14,6 +16,12 @@ struct ScoreScreen: View {
     @State private var isTermPickerPresented = false
     @State private var isLoading = false
     @State private var errorMessage = ""
+    @State private var hasRestoredCachedTerms = false
+    @State private var termGPAIndex: [String: GPAInfo] = [:]
+    @State private var expandedCourseID: String?
+    @State private var courseDetails: [String: ScoreDetail] = [:]
+    @State private var detailErrors: [String: String] = [:]
+    @State private var detailLoadingCourseID: String?
 
     var body: some View {
         Group {
@@ -36,6 +44,7 @@ struct ScoreScreen: View {
         .refreshable { await loadData() }
         .task {
             if terms.isEmpty {
+                restoreCachedTermsIfNeeded()
                 await loadData()
             }
         }
@@ -366,7 +375,7 @@ struct ScoreScreen: View {
 
     private func termCard(_ term: TermScore) -> some View {
         let expanded = selectedTermCode != allTermCode || expandedTermCodes.contains(term.termCode)
-        let info = calculateGPA(for: term.scoreList)
+        let info = termGPAIndex[term.termCode] ?? calculateGPA(for: term.scoreList)
 
         return VStack(alignment: .leading, spacing: 10) {
             if selectedTermCode == allTermCode {
@@ -426,6 +435,7 @@ struct ScoreScreen: View {
     @ViewBuilder
     private func scoreRow(_ score: ScoreItem) -> some View {
         let selected = selectedCourseIDs.contains(score.id)
+        let expanded = expandedCourseID == score.id
 
         if isCourseSelectionMode {
             Button {
@@ -435,15 +445,37 @@ struct ScoreScreen: View {
                     selectedCourseIDs.insert(score.id)
                 }
             } label: {
-                scoreRowContent(score, isSelected: selected)
+                scoreRowContent(score, isSelected: selected, showsExpandIndicator: false, isExpanded: false)
             }
             .buttonStyle(.plain)
         } else {
-            scoreRowContent(score, isSelected: false)
+            VStack(alignment: .leading, spacing: 0) {
+                scoreRowContent(score, isSelected: false, showsExpandIndicator: true, isExpanded: expanded)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        toggleDetail(for: score)
+                    }
+
+                if expanded {
+                    detailSection(courseID: score.id)
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .opacity
+                            )
+                        )
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: expanded)
         }
     }
 
-    private func scoreRowContent(_ score: ScoreItem, isSelected: Bool) -> some View {
+    private func scoreRowContent(
+        _ score: ScoreItem,
+        isSelected: Bool,
+        showsExpandIndicator: Bool,
+        isExpanded: Bool
+    ) -> some View {
         let tint = scoreColor(score)
 
         return HStack(spacing: 10) {
@@ -481,6 +513,11 @@ struct ScoreScreen: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+                if showsExpandIndicator {
+                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -492,6 +529,130 @@ struct ScoreScreen: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(isCourseSelectionMode && isSelected ? Color.blue.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func detailSection(courseID: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+                .padding(.top, 6)
+
+            if detailLoadingCourseID == courseID {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在加载成绩构成...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 6)
+            } else if let detail = courseDetails[courseID] {
+                detailMetaGrid(detail)
+
+                if detail.itemList.isEmpty {
+                    Text("该课程暂无分项成绩")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                } else {
+                    Text("分项成绩")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+
+                    VStack(spacing: 8) {
+                        ForEach(detail.itemList) { item in
+                            scoreDetailRow(item)
+                        }
+                    }
+                }
+            } else if let error = detailErrors[courseID] {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.vertical, 4)
+            } else {
+                Text("未获取到成绩构成数据")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+    }
+
+    private func detailMetaGrid(_ detail: ScoreDetail) -> some View {
+        var metrics: [(String, String)] = [
+            ("绩点", String(format: "%.1f", detail.gpa)),
+            ("学分", String(format: "%.1f", detail.coursePoint))
+        ]
+        if !detail.examType.isEmpty {
+            metrics.append(("类型", detail.examType))
+        }
+        if let major = detail.majorFlag, !major.isEmpty {
+            metrics.append(("性质", major))
+        }
+
+        return LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ],
+            spacing: 8
+        ) {
+            ForEach(Array(metrics.enumerated()), id: \.offset) { _, item in
+                VStack(spacing: 3) {
+                    Text(item.1)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(item.0)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemBackground))
+                )
+            }
+        }
+    }
+
+    private func scoreDetailRow(_ item: ScoreDetailItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(item.itemName.isEmpty ? "未命名分项" : item.itemName)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
+
+            HStack(spacing: 8) {
+                Text(percentText(item.itemPercent))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .trailing)
+
+                if let scoreValue = item.itemScoreValue {
+                    ProgressView(value: min(max(scoreValue / 100, 0), 1))
+                        .tint(.blue)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Color.clear
+                        .frame(maxWidth: .infinity, minHeight: 8)
+                }
+
+                Text(item.itemScore.isEmpty ? "—" : item.itemScore)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(scoreColorForRaw(item.itemScore))
+                    .frame(width: 46, alignment: .trailing)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
         )
     }
 
@@ -533,38 +694,119 @@ struct ScoreScreen: View {
 
     @MainActor
     private func loadData() async {
+        guard !isLoading else { return }
+
+        let loadStartedAt = Date()
+        let hadLocalData = !terms.isEmpty
         isLoading = true
         defer { isLoading = false }
 
+        let loginStartedAt = Date()
         guard await loginState.ensureLogin(type: .jwapp),
               let login = loginState.jwappLogin else {
             errorMessage = "未登录移动教务"
+            logger.error("score load failed: jwapp login unavailable")
             return
         }
+        let loginElapsedMS = Int(Date().timeIntervalSince(loginStartedAt) * 1000)
 
         do {
             let api = JWAppAPI(login: login)
+            let fetchStartedAt = Date()
             let termScores = try await api.getGrade()
-            terms = termScores
+            let fetchElapsedMS = Int(Date().timeIntervalSince(fetchStartedAt) * 1000)
 
-            if selectedTermCode != allTermCode,
-               !termScores.contains(where: { $0.termCode == selectedTermCode }) {
-                selectedTermCode = allTermCode
-            }
-
-            let availableTermCodes = Set(termScores.map(\.termCode))
-            expandedTermCodes = expandedTermCodes.intersection(availableTermCodes)
-            if expandedTermCodes.isEmpty {
-                expandedTermCodes = Set(sortedTerms.map { $0.termCode }.prefix(1))
-            }
-
-            let availableCourseIDs = Set(termScores.flatMap(\.scoreList).map(\.id))
-            selectedCourseIDs = selectedCourseIDs.intersection(availableCourseIDs)
-
+            let applyStartedAt = Date()
+            applyTermScores(termScores)
+            persistCachedTerms(termScores)
             errorMessage = ""
+
+            let applyElapsedMS = Int(Date().timeIntervalSince(applyStartedAt) * 1000)
+            let totalElapsedMS = Int(Date().timeIntervalSince(loadStartedAt) * 1000)
+            logger.info(
+                "score load success loginMs=\(loginElapsedMS, privacy: .public) fetchMs=\(fetchElapsedMS, privacy: .public) applyMs=\(applyElapsedMS, privacy: .public) totalMs=\(totalElapsedMS, privacy: .public) cacheHit=\(hadLocalData, privacy: .public)"
+            )
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = hadLocalData ? "刷新失败：\(error.localizedDescription)" : error.localizedDescription
+            let totalElapsedMS = Int(Date().timeIntervalSince(loadStartedAt) * 1000)
+            logger.error(
+                "score load failed totalMs=\(totalElapsedMS, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
         }
+    }
+
+    private func applyTermScores(_ termScores: [TermScore]) {
+        terms = termScores
+        termGPAIndex = termScores.reduce(into: [:]) { partialResult, term in
+            partialResult[term.termCode] = calculateGPA(for: term.scoreList)
+        }
+
+        if selectedTermCode != allTermCode,
+           !termScores.contains(where: { $0.termCode == selectedTermCode }) {
+            selectedTermCode = allTermCode
+        }
+
+        let availableTermCodes = Set(termScores.map(\.termCode))
+        expandedTermCodes = expandedTermCodes.intersection(availableTermCodes)
+        if expandedTermCodes.isEmpty {
+            expandedTermCodes = Set(termScores.map(\.termCode).sorted(by: >).prefix(1))
+        }
+
+        let availableCourseIDs = Set(termScores.flatMap(\.scoreList).map(\.id))
+        selectedCourseIDs = selectedCourseIDs.intersection(availableCourseIDs)
+
+        if let expandedCourseID,
+           !availableCourseIDs.contains(expandedCourseID) {
+            self.expandedCourseID = nil
+        }
+        courseDetails = courseDetails.filter { availableCourseIDs.contains($0.key) }
+        detailErrors = detailErrors.filter { availableCourseIDs.contains($0.key) }
+        if let detailLoadingCourseID,
+           !availableCourseIDs.contains(detailLoadingCourseID) {
+            self.detailLoadingCourseID = nil
+        }
+    }
+
+    private func restoreCachedTermsIfNeeded() {
+        guard !hasRestoredCachedTerms else { return }
+        hasRestoredCachedTerms = true
+
+        guard terms.isEmpty,
+              let username = cacheUsername else {
+            return
+        }
+
+        let key = scoreCacheKey(for: username)
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let snapshot = try? JSONDecoder().decode(ScoreCacheSnapshot.self, from: data),
+              !snapshot.terms.isEmpty else {
+            return
+        }
+
+        applyTermScores(snapshot.terms)
+        logger.info("score cache restore success termCount=\(snapshot.terms.count, privacy: .public)")
+    }
+
+    private func persistCachedTerms(_ termScores: [TermScore]) {
+        guard let username = cacheUsername else { return }
+
+        let snapshot = ScoreCacheSnapshot(updatedAt: Date(), terms: termScores)
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: scoreCacheKey(for: username))
+    }
+
+    private var cacheUsername: String? {
+        let active = loginState.activeUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !active.isEmpty {
+            return active
+        }
+
+        let saved = loginState.savedUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        return saved.isEmpty ? nil : saved
+    }
+
+    private func scoreCacheKey(for username: String) -> String {
+        "xjtu.score.cache.\(username)"
     }
 
     private func selectTerm(_ termCode: String) {
@@ -721,6 +963,80 @@ struct ScoreScreen: View {
         }
     }
 
+    private func toggleDetail(for course: ScoreItem) {
+        let shouldExpand = expandedCourseID != course.id
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            expandedCourseID = shouldExpand ? course.id : nil
+        }
+
+        guard shouldExpand,
+              courseDetails[course.id] == nil,
+              detailLoadingCourseID != course.id else {
+            return
+        }
+
+        Task {
+            await loadDetail(courseID: course.id)
+        }
+    }
+
+    @MainActor
+    private func loadDetail(courseID: String) async {
+        guard courseDetails[courseID] == nil else { return }
+
+        detailErrors[courseID] = nil
+        detailLoadingCourseID = courseID
+        defer {
+            if detailLoadingCourseID == courseID {
+                detailLoadingCourseID = nil
+            }
+        }
+
+        guard await loginState.ensureLogin(type: .jwapp),
+              let login = loginState.jwappLogin else {
+            detailErrors[courseID] = "未登录移动教务，无法获取成绩构成"
+            return
+        }
+
+        do {
+            let api = JWAppAPI(login: login)
+            let detail = try await api.getDetail(courseID: courseID)
+            courseDetails[courseID] = detail
+        } catch {
+            detailErrors[courseID] = "加载成绩构成失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func percentText(_ value: Double) -> String {
+        if value <= 0 { return "0%" }
+        return "\(Int((value * 100).rounded()))%"
+    }
+
+    private func scoreColorForRaw(_ rawScore: String) -> Color {
+        let normalized = rawScore.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized == "通过" {
+            return .blue
+        }
+        if normalized == "不通过" {
+            return .red
+        }
+
+        guard let numeric = gradeToNumericScore(normalized) else {
+            return .secondary
+        }
+
+        switch numeric {
+        case 90...:
+            return .green
+        case 80..<90:
+            return .blue
+        case 60..<80:
+            return .orange
+        default:
+            return .red
+        }
+    }
+
     private func calculateGPA(for courses: [ScoreItem]) -> GPAInfo {
         var totalCredits = 0.0
         var weightedGPA = 0.0
@@ -738,7 +1054,7 @@ struct ScoreScreen: View {
             }
 
             let apiGPA = (course.gpa ?? 0) > 0 ? course.gpa! : 0
-            let mappedGPA = ScoreReportAPI.scoreToGPA(clean) ?? apiGPA
+            let mappedGPA = scoreToGPA(clean) ?? apiGPA
             let finalGPA = max(apiGPA, mappedGPA)
             let numericScore = course.scoreValue ?? gradeToNumericScore(clean) ?? 0
 
@@ -763,4 +1079,9 @@ struct ScoreScreen: View {
             courseCount: courseCount
         )
     }
+}
+
+private struct ScoreCacheSnapshot: Codable {
+    let updatedAt: Date
+    let terms: [TermScore]
 }

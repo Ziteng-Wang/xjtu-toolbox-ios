@@ -1,6 +1,6 @@
 ﻿import Foundation
 
-struct CardInfo: Hashable {
+struct CardInfo: Hashable, Codable {
     let account: String
     let name: String
     let studentNo: String
@@ -13,7 +13,7 @@ struct CardInfo: Hashable {
     let department: String
 }
 
-struct CardTransaction: Identifiable, Hashable {
+struct CardTransaction: Identifiable, Hashable, Codable {
     let id = UUID()
     let time: String
     let merchant: String
@@ -21,16 +21,25 @@ struct CardTransaction: Identifiable, Hashable {
     let balance: Double
     let type: String
     let description: String
+
+    private enum CodingKeys: String, CodingKey {
+        case time
+        case merchant
+        case amount
+        case balance
+        case type
+        case description
+    }
 }
 
-struct MerchantStat: Identifiable, Hashable {
+struct MerchantStat: Identifiable, Hashable, Codable {
     var id: String { name }
     let name: String
     let totalAmount: Double
     let count: Int
 }
 
-struct MonthlyStats: Identifiable, Hashable {
+struct MonthlyStats: Identifiable, Hashable, Codable {
     var id: String { month }
     let month: String
     let totalSpend: Double
@@ -42,13 +51,13 @@ struct MonthlyStats: Identifiable, Hashable {
     let peakDayAmount: Double
 }
 
-struct MealTimeStats: Hashable {
+struct MealTimeStats: Hashable, Codable {
     let count: Int
     let totalAmount: Double
     let avgAmount: Double
 }
 
-struct DayTypeStats: Hashable {
+struct DayTypeStats: Hashable, Codable {
     let label: String
     let count: Int
     let totalAmount: Double
@@ -169,6 +178,62 @@ final class CampusCardAPI {
         }
 
         return all
+    }
+
+    func getTransactions(
+        startDate: Date,
+        endDate: Date,
+        pages: [Int],
+        pageSize: Int = 50,
+        maxConcurrent: Int = 4
+    ) async -> [CardTransaction] {
+        guard !pages.isEmpty else {
+            return []
+        }
+
+        let orderedPages = pages.sorted()
+        let concurrency = max(1, min(maxConcurrent, orderedPages.count))
+        var nextIndex = 0
+        var pageResult: [Int: [CardTransaction]] = [:]
+
+        await withTaskGroup(of: (Int, [CardTransaction]?).self) { group in
+            let seedCount = min(concurrency, orderedPages.count)
+            for _ in 0..<seedCount {
+                let page = orderedPages[nextIndex]
+                nextIndex += 1
+                group.addTask { [self] in
+                    let result = try? await self.getTransactions(
+                        startDate: startDate,
+                        endDate: endDate,
+                        page: page,
+                        pageSize: pageSize
+                    )
+                    return (page, result?.list)
+                }
+            }
+
+            while let (page, rows) = await group.next() {
+                if let rows {
+                    pageResult[page] = rows
+                }
+
+                if nextIndex < orderedPages.count {
+                    let nextPage = orderedPages[nextIndex]
+                    nextIndex += 1
+                    group.addTask { [self] in
+                        let result = try? await self.getTransactions(
+                            startDate: startDate,
+                            endDate: endDate,
+                            page: nextPage,
+                            pageSize: pageSize
+                        )
+                        return (nextPage, result?.list)
+                    }
+                }
+            }
+        }
+
+        return orderedPages.compactMap { pageResult[$0] }.flatMap { $0 }
     }
 
     func calculateMonthlyStats(_ transactions: [CardTransaction]) -> [MonthlyStats] {

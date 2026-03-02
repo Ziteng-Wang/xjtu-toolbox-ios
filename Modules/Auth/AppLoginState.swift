@@ -29,6 +29,7 @@ final class AppLoginState: ObservableObject {
     private var webVPNReady = false
     private var cachedVisitorID: String?
     private var cachedRsaPublicKey: String?
+    private var loginTasks: [LoginType: Task<XJTULogin?, Never>] = [:]
 
     private(set) var savedUsername: String = ""
     private(set) var savedPassword: String = ""
@@ -108,6 +109,7 @@ final class AppLoginState: ObservableObject {
         isOnCampus = nil
         webVPNReady = false
         lastLoginError = nil
+        loginTasks.removeAll()
 
         savedUsername = ""
         savedPassword = ""
@@ -118,6 +120,31 @@ final class AppLoginState: ObservableObject {
     }
 
     func autoLogin(type: LoginType) async -> XJTULogin? {
+        if let task = loginTasks[type] {
+            logger.info("autoLogin join in-flight task type=\(type.rawValue, privacy: .public)")
+            return await task.value
+        }
+
+        let startedAt = Date()
+        let task = Task<XJTULogin?, Never> { @MainActor [weak self] in
+            guard let self else { return nil }
+            return await self.performAutoLogin(type: type)
+        }
+        loginTasks[type] = task
+        let result = await task.value
+        loginTasks[type] = nil
+
+        if type == .jwapp {
+            let elapsedMS = Int(Date().timeIntervalSince(startedAt) * 1000)
+            logger.info("autoLogin finished type=jwapp elapsedMs=\(elapsedMS, privacy: .public)")
+#if DEBUG
+            print("[AUTH] autoLogin finished type=jwapp elapsedMs=\(elapsedMS)")
+#endif
+        }
+        return result
+    }
+
+    private func performAutoLogin(type: LoginType) async -> XJTULogin? {
         logger.info("autoLogin start type=\(type.rawValue, privacy: .public) hasCredentials=\(self.hasCredentials, privacy: .public)")
 #if DEBUG
         print("[AUTH] autoLogin start type=\(type.rawValue) hasCredentials=\(hasCredentials)")
