@@ -23,7 +23,9 @@ struct LibraryScreen: View {
     @State private var showAvailableOnly = false
     @State private var isLoading = false
     @State private var hasLoaded = false
-    @State private var bookingSeatID: String?
+    @State private var myBooking: MyBookingInfo?
+    @State private var pendingOperationText: String?
+    @State private var isRefreshingMyBooking = false
 
     private var areaOptions: [LibraryAreaOption] {
         LibraryAPI.areaMap
@@ -65,13 +67,13 @@ struct LibraryScreen: View {
             Task { await loadData() }
         }
         .overlay {
-            if bookingSeatID != nil {
+            if let pendingOperationText {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(.thinMaterial)
                     HStack(spacing: 8) {
                         ProgressView()
-                        Text("正在预约座位...")
+                        Text(pendingOperationText)
                             .font(.footnote)
                     }
                     .padding(.horizontal, 12)
@@ -97,6 +99,7 @@ struct LibraryScreen: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 summaryCard
+                myBookingCard
                 areaSelectorCard
                 filterCard
 
@@ -175,6 +178,80 @@ struct LibraryScreen: View {
                     }
                 }
                 .padding(.vertical, 2)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+    }
+
+    private var myBookingCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("我的预约")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task { await refreshMyBooking() }
+                } label: {
+                    if isRefreshingMyBooking {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isRefreshingMyBooking || pendingOperationText != nil)
+            }
+
+            if let myBooking {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(myBooking.seatID ?? "未知座位")
+                        .font(.title3.weight(.bold))
+
+                    let details = [myBooking.area, myBooking.statusText]
+                        .compactMap { $0 }
+                        .filter { !$0.isEmpty }
+                    if !details.isEmpty {
+                        Text(details.joined(separator: " · "))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                let actions = bookingActions(myBooking)
+                if !actions.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(actions, id: \.label) { action in
+                                if action.label.contains("取消") {
+                                    Button(action.label) {
+                                        Task { await executeBookingAction(label: action.label, url: action.url) }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.red)
+                                    .controlSize(.small)
+                                    .disabled(pendingOperationText != nil)
+                                } else {
+                                    Button(action.label) {
+                                        Task { await executeBookingAction(label: action.label, url: action.url) }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(.blue)
+                                    .controlSize(.small)
+                                    .disabled(pendingOperationText != nil)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("暂无预约")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(14)
@@ -291,7 +368,7 @@ struct LibraryScreen: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(!seat.available || bookingSeatID != nil)
+            .disabled(!seat.available || pendingOperationText != nil)
         }
         .frame(width: 130, alignment: .leading)
         .padding(12)
@@ -345,7 +422,7 @@ struct LibraryScreen: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(bookingSeatID != nil)
+                .disabled(pendingOperationText != nil)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -409,28 +486,34 @@ struct LibraryScreen: View {
         }
 
         let api = LibraryAPI(login: login)
-        let result = await api.getSeats(areaCode: selectedAreaCode)
+        async let seatResult = api.getSeats(areaCode: selectedAreaCode)
+        async let bookingResult = api.getMyBooking()
+        let result = await seatResult
+        let currentBooking = await bookingResult
 
         switch result {
         case let .success(list, stats):
             seats = list
             areaStats = stats
             recommendations = api.recommendSeats(list)
+            myBooking = currentBooking
             message = ""
         case let .authError(msg, _):
             message = msg
             seats = []
             recommendations = []
+            myBooking = nil
         case let .error(msg):
             message = msg
             seats = []
             recommendations = []
+            myBooking = nil
         }
     }
 
     @MainActor
     private func book(seatID: String) async {
-        guard bookingSeatID == nil else { return }
+        guard pendingOperationText == nil else { return }
 
         guard await loginState.ensureLogin(type: .library),
               let login = loginState.libraryLogin else {
@@ -439,12 +522,68 @@ struct LibraryScreen: View {
             return
         }
 
-        bookingSeatID = seatID
-        defer { bookingSeatID = nil }
+        pendingOperationText = "正在预约座位..."
+        defer { pendingOperationText = nil }
 
         let api = LibraryAPI(login: login)
         let result = await api.bookSeat(seatID: seatID, areaCode: selectedAreaCode, autoSwap: true)
         message = result.message
         await loadData()
+    }
+
+    @MainActor
+    private func refreshMyBooking() async {
+        guard pendingOperationText == nil else { return }
+        guard await loginState.ensureLogin(type: .library),
+              let login = loginState.libraryLogin else {
+            let diagnostic = loginState.libraryLogin?.diagnosticInfo ?? ""
+            message = diagnostic.isEmpty ? "未登录图书馆系统" : diagnostic
+            myBooking = nil
+            return
+        }
+
+        isRefreshingMyBooking = true
+        defer { isRefreshingMyBooking = false }
+
+        let api = LibraryAPI(login: login)
+        myBooking = await api.getMyBooking()
+        if myBooking == nil {
+            message = "当前暂无预约"
+        } else if message == "当前暂无预约" {
+            message = ""
+        }
+    }
+
+    @MainActor
+    private func executeBookingAction(label: String, url: String) async {
+        guard pendingOperationText == nil else { return }
+        guard await loginState.ensureLogin(type: .library),
+              let login = loginState.libraryLogin else {
+            let diagnostic = loginState.libraryLogin?.diagnosticInfo ?? ""
+            message = diagnostic.isEmpty ? "未登录图书馆系统" : diagnostic
+            return
+        }
+
+        pendingOperationText = "正在\(label)..."
+        defer { pendingOperationText = nil }
+
+        let api = LibraryAPI(login: login)
+        let result = await api.executeAction(url)
+        message = "\(label)：\(result.message)"
+        await loadData()
+    }
+
+    private func bookingActions(_ booking: MyBookingInfo) -> [(label: String, url: String)] {
+        let actionOrder = ["取消预约": 0, "签到": 1, "临时离馆": 2, "回馆签到": 3]
+        return booking.actionURLs
+            .map { (label: $0.key, url: $0.value) }
+            .sorted { lhs, rhs in
+                let left = actionOrder[lhs.label] ?? 100
+                let right = actionOrder[rhs.label] ?? 100
+                if left != right {
+                    return left < right
+                }
+                return lhs.label < rhs.label
+            }
     }
 }

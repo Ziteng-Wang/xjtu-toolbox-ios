@@ -3,6 +3,7 @@ import OSLog
 
 @MainActor
 final class AppLoginState: ObservableObject {
+    @Published var eulaAccepted = false
     @Published var activeUsername: String = ""
     @Published var isOnCampus: Bool?
     @Published var ywtbUserInfo: UserInfo?
@@ -50,6 +51,7 @@ final class AppLoginState: ObservableObject {
 
     func bootstrap() async {
         await CookiePersistence.shared.restore()
+        eulaAccepted = await credentialStore.isEulaAccepted()
 
         if let credential = await credentialStore.loadCredential() {
             savedUsername = credential.username
@@ -66,6 +68,11 @@ final class AppLoginState: ObservableObject {
         _ = await autoLogin(type: .jwxt)
         _ = await autoLogin(type: .jwapp)
         _ = await autoLogin(type: .ywtb)
+    }
+
+    func acceptEula() async {
+        await credentialStore.acceptEula()
+        eulaAccepted = true
     }
 
     func saveCredentials(username: String, password: String) async {

@@ -4,7 +4,8 @@ import UIKit
 struct HomeView: View {
     @EnvironmentObject private var loginState: AppLoginState
     @Binding var showLoginSheet: Bool
-    @Binding var preferredLoginType: LoginType
+    @State private var quickLoginType: LoginType?
+    @State private var quickLoginError: String?
 
     private let quickEntries: [AppDestination] = [
         .campusCard, .schedule, .paymentCode, .notification
@@ -53,6 +54,11 @@ struct HomeView: View {
                 }
                 await loginState.loadNsaProfile()
             }
+            .onChange(of: loginState.isLoggedIn) { _, isLoggedIn in
+                if isLoggedIn {
+                    quickLoginError = nil
+                }
+            }
         }
     }
 
@@ -79,7 +85,6 @@ struct HomeView: View {
 
                 if !loginState.isLoggedIn {
                     Button("登录") {
-                        preferredLoginType = .jwxt
                         showLoginSheet = true
                     }
                     .buttonStyle(.borderedProminent)
@@ -199,14 +204,14 @@ struct HomeView: View {
 
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(title: "系统状态", subtitle: "点击未登录项可快速登录")
+            sectionHeader(title: "系统状态", subtitle: "点击未连接项会自动用当前账号认证")
             VStack(spacing: 0) {
                 ForEach(Array(statusServices.enumerated()), id: \.element.title) { index, service in
                     let connected = isServiceConnected(service.type)
+                    let isLoading = quickLoginType == service.type
                     Button {
-                        guard !connected else { return }
-                        preferredLoginType = service.type
-                        showLoginSheet = true
+                        guard !connected, !isLoading else { return }
+                        quickLogin(service.type)
                     } label: {
                         HStack {
                             Image(systemName: connected ? "checkmark.circle.fill" : "circle")
@@ -214,7 +219,10 @@ struct HomeView: View {
                             Text(service.title)
                                 .foregroundStyle(.primary)
                             Spacer()
-                            StatusBadge(text: connected ? "已连接" : "去登录", color: connected ? .green : .gray)
+                            StatusBadge(
+                                text: connected ? "已连接" : (isLoading ? "登录中" : "自动登录"),
+                                color: connected ? .green : (isLoading ? .blue : .gray)
+                            )
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 11)
@@ -228,6 +236,12 @@ struct HomeView: View {
                 }
             }
             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            if let quickLoginError, !quickLoginError.isEmpty {
+                Text(quickLoginError)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 
@@ -366,7 +380,30 @@ struct HomeView: View {
             return nil
         }
         let connected = isServiceConnected(type)
-        return (connected ? "已连接" : "待登录", connected ? .green : .gray)
+        return (connected ? "已连接" : "自动登录", connected ? .green : .gray)
+    }
+
+    private func quickLogin(_ type: LoginType) {
+        if !loginState.hasCredentials {
+            quickLoginError = "请先登录一次，保存账号和密码"
+            showLoginSheet = true
+            return
+        }
+
+        quickLoginType = type
+        quickLoginError = nil
+
+        Task {
+            let success = await loginState.ensureLogin(type: type)
+            await MainActor.run {
+                quickLoginType = nil
+                if success {
+                    quickLoginError = nil
+                } else {
+                    quickLoginError = loginState.lastLoginError ?? "自动登录失败，请稍后重试"
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -539,55 +576,84 @@ struct AcademicView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("教学") {
-                    NavigationLink {
-                        ScheduleScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("课表 / 考试 / 教材", systemImage: "calendar")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    academicHeader
+
+                    sectionTitle("教学服务", subtitle: "常用教务能力")
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        academicCard(
+                            title: "课表 / 考试 / 教材",
+                            subtitle: "课程安排与教材",
+                            icon: "calendar",
+                            color: .teal
+                        ) {
+                            ScheduleScreen()
+                        }
+
+                        academicCard(
+                            title: "成绩查询",
+                            subtitle: "移动教务成绩",
+                            icon: "chart.line.uptrend.xyaxis",
+                            color: .blue
+                        ) {
+                            ScoreScreen()
+                        }
+
+                        academicCard(
+                            title: "报表成绩",
+                            subtitle: "细化成绩报表",
+                            icon: "doc.text",
+                            color: .green
+                        ) {
+                            ScoreReportScreen()
+                        }
+
+                        academicCard(
+                            title: "培养进度",
+                            subtitle: "培养方案与完成度",
+                            icon: "list.bullet.clipboard",
+                            color: .mint
+                        ) {
+                            CurriculumScreen()
+                        }
                     }
 
-                    NavigationLink {
-                        ScoreScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("成绩查询", systemImage: "chart.line.uptrend.xyaxis")
-                    }
+                    sectionTitle("评教与研究生", subtitle: "更多教学服务")
+                    VStack(spacing: 10) {
+                        academicRowCard(
+                            title: "本科评教",
+                            subtitle: "本科课程教学评价",
+                            icon: "checkmark.seal",
+                            color: .blue
+                        ) {
+                            JudgeScreen()
+                        }
 
-                    NavigationLink {
-                        ScoreReportScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("报表成绩", systemImage: "doc.text")
-                    }
+                        academicRowCard(
+                            title: "研究生评教",
+                            subtitle: "研究生课程评价",
+                            icon: "graduationcap.circle",
+                            color: .purple
+                        ) {
+                            GsteJudgeScreen()
+                        }
 
-                    NavigationLink {
-                        CurriculumScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("培养进度", systemImage: "list.bullet.clipboard")
+                        academicRowCard(
+                            title: "GMIS",
+                            subtitle: "研究生课表与成绩",
+                            icon: "graduationcap",
+                            color: .teal
+                        ) {
+                            GmisScreen()
+                        }
                     }
                 }
-
-                Section("评教") {
-                    NavigationLink {
-                        JudgeScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("本科评教", systemImage: "checkmark.seal")
-                    }
-
-                    NavigationLink {
-                        GsteJudgeScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("研究生评教", systemImage: "graduationcap.circle")
-                    }
-                }
-
-                Section("研究生") {
-                    NavigationLink {
-                        GmisScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("GMIS", systemImage: "graduationcap")
-                    }
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
+            .scrollIndicators(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("教务")
             .toolbar {
                 if !loginState.isLoggedIn {
@@ -597,6 +663,114 @@ struct AcademicView: View {
                 }
             }
         }
+    }
+
+    private var academicHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("教务中心")
+                        .font(.title2.weight(.bold))
+                    Text("课表、成绩、培养进度与评教入口")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "graduationcap.fill")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(Color.blue)
+            }
+        }
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [Color.blue.opacity(0.14), Color(uiColor: .secondarySystemBackground)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+    }
+
+    @ViewBuilder
+    private func sectionTitle(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.headline)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func academicCard<Destination: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination().hideGlobalTabBarOnPush()
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 36, height: 36)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func academicRowCard<Destination: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination().hideGlobalTabBarOnPush()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 36, height: 36)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -610,111 +784,44 @@ struct ToolsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("常用工具") {
-                    NavigationLink {
-                        AttendanceScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("考勤查询", systemImage: "person.badge.clock")
-                    }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    toolsHeader
 
-                    NavigationLink {
-                        LibraryScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("图书馆座位", systemImage: "chair.lounge")
-                    }
-
-                    NavigationLink {
-                        CampusCardScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("校园卡", systemImage: "creditcard")
-                    }
-
-                    NavigationLink {
-                        PaymentCodeScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("付款码", systemImage: "qrcode")
-                    }
-
-                    NavigationLink {
-                        EmptyRoomScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("空教室", systemImage: "building.2")
-                    }
-
-                    NavigationLink {
-                        NotificationScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("通知公告", systemImage: "bell")
-                    }
-
-                    NavigationLink {
-                        YwtbScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("一网通办", systemImage: "person.text.rectangle")
-                    }
-
-                    NavigationLink {
-                        BrowserScreen().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("内置浏览器", systemImage: "safari")
-                    }
-                }
-
-                Section("WebVPN 地址互转") {
-                    Picker("方向", selection: $reverseConvert) {
-                        Text("原始 -> VPN").tag(false)
-                        Text("VPN -> 原始").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-
-                    TextField(
-                        reverseConvert ? "输入 WebVPN 地址" : "输入校内地址",
-                        text: $webVPNInput
-                    )
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-
-                    Button("转换") {
-                        let trimmed = webVPNInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else {
-                            webVPNOutput = ""
-                            return
+                    sectionTitle("常用工具", subtitle: "常见服务快速入口")
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        toolCard(title: "考勤查询", subtitle: "进出校记录", icon: "person.badge.clock", color: .green) {
+                            AttendanceScreen()
                         }
-
-                        if reverseConvert {
-                            if let vpnURL = URL(string: trimmed),
-                               let original = WebVPN.originalURL(from: vpnURL) {
-                                webVPNOutput = original.absoluteString
-                            } else {
-                                webVPNOutput = "无法解析该 WebVPN 地址"
-                            }
-                        } else {
-                            let source = normalizeSourceURL(trimmed)
-                            if let sourceURL = URL(string: source) {
-                                webVPNOutput = WebVPN.vpnURL(for: sourceURL).absoluteString
-                            } else {
-                                webVPNOutput = "地址格式错误"
-                            }
+                        toolCard(title: "图书馆座位", subtitle: "查空位与预约", icon: "chair.lounge", color: .teal) {
+                            LibraryScreen()
+                        }
+                        toolCard(title: "校园卡", subtitle: "余额与消费", icon: "creditcard", color: .blue) {
+                            CampusCardScreen()
+                        }
+                        toolCard(title: "付款码", subtitle: "校园支付码", icon: "qrcode", color: .indigo) {
+                            PaymentCodeScreen()
+                        }
+                        toolCard(title: "空教室", subtitle: "按时段筛选", icon: "building.2", color: .cyan) {
+                            EmptyRoomScreen()
+                        }
+                        toolCard(title: "通知公告", subtitle: "教务信息汇总", icon: "bell", color: .orange) {
+                            NotificationScreen()
+                        }
+                        toolCard(title: "一网通办", subtitle: "统一服务入口", icon: "person.text.rectangle", color: .indigo) {
+                            YwtbScreen()
+                        }
+                        toolCard(title: "内置浏览器", subtitle: "校园网页访问", icon: "safari", color: .cyan) {
+                            BrowserScreen()
                         }
                     }
 
-                    if !webVPNOutput.isEmpty {
-                        Text(webVPNOutput)
-                            .font(.footnote)
-                            .foregroundStyle(webVPNOutput.hasPrefix("http") ? Color.primary : Color.red)
-                            .textSelection(.enabled)
-
-                        if webVPNOutput.hasPrefix("http") {
-                            NavigationLink {
-                                BrowserScreen(initialURL: webVPNOutput).hideGlobalTabBarOnPush()
-                            } label: {
-                                Label("在内置浏览器中打开", systemImage: "arrow.up.right.square")
-                            }
-                        }
-                    }
+                    sectionTitle("WebVPN 地址互转", subtitle: "校内地址与 VPN 地址转换")
+                    webVPNConverterCard
                 }
             }
+            .scrollIndicators(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("工具")
             .toolbar {
                 if !loginState.isLoggedIn {
@@ -723,6 +830,163 @@ struct ToolsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var toolsHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("工具箱")
+                        .font(.title2.weight(.bold))
+                    Text("学习与校园生活高频能力")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                StatusBadge(text: networkModeText, color: networkModeColor)
+            }
+        }
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [Color.indigo.opacity(0.14), Color(uiColor: .secondarySystemBackground)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+    }
+
+    @ViewBuilder
+    private func sectionTitle(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.headline)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func toolCard<Destination: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination().hideGlobalTabBarOnPush()
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 36, height: 36)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var webVPNConverterCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("方向", selection: $reverseConvert) {
+                Text("原始 -> VPN").tag(false)
+                Text("VPN -> 原始").tag(true)
+            }
+            .pickerStyle(.segmented)
+
+            TextField(
+                reverseConvert ? "输入 WebVPN 地址" : "输入校内地址",
+                text: $webVPNInput
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            Button("转换") {
+                let trimmed = webVPNInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    webVPNOutput = ""
+                    return
+                }
+
+                if reverseConvert {
+                    if let vpnURL = URL(string: trimmed),
+                       let original = WebVPN.originalURL(from: vpnURL) {
+                        webVPNOutput = original.absoluteString
+                    } else {
+                        webVPNOutput = "无法解析该 WebVPN 地址"
+                    }
+                } else {
+                    let source = normalizeSourceURL(trimmed)
+                    if let sourceURL = URL(string: source) {
+                        webVPNOutput = WebVPN.vpnURL(for: sourceURL).absoluteString
+                    } else {
+                        webVPNOutput = "地址格式错误"
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+
+            if !webVPNOutput.isEmpty {
+                Text(webVPNOutput)
+                    .font(.footnote)
+                    .foregroundStyle(webVPNOutput.hasPrefix("http") ? Color.primary : Color.red)
+                    .textSelection(.enabled)
+
+                if webVPNOutput.hasPrefix("http") {
+                    NavigationLink {
+                        BrowserScreen(initialURL: webVPNOutput).hideGlobalTabBarOnPush()
+                    } label: {
+                        Label("在内置浏览器中打开", systemImage: "arrow.up.right.square")
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+    }
+
+    private var networkModeText: String {
+        switch loginState.isOnCampus {
+        case .some(true):
+            return "校园网"
+        case .some(false):
+            return "WebVPN"
+        case .none:
+            return "网络未检测"
+        }
+    }
+
+    private var networkModeColor: Color {
+        switch loginState.isOnCampus {
+        case .some(true):
+            return .green
+        case .some(false):
+            return .orange
+        case .none:
+            return .gray
         }
     }
 
@@ -743,51 +1007,68 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("信息") {
-                    NavigationLink {
-                        ProfileAccountInfoView().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("账号信息", systemImage: "person.crop.circle")
-                    }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    profileHeader
 
-                    NavigationLink {
-                        ProfileYwtbInfoView().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("一网通办信息", systemImage: "person.text.rectangle")
-                    }
+                    sectionTitle("个人信息", subtitle: "查看与同步个人资料")
+                    VStack(spacing: 10) {
+                        profileLinkCard(
+                            title: "账号信息",
+                            subtitle: "登录账号与系统状态",
+                            icon: "person.crop.circle",
+                            color: .blue
+                        ) {
+                            ProfileAccountInfoView()
+                        }
 
-                    NavigationLink {
-                        ProfileNsaInfoView().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("NSA 个人信息", systemImage: "person.badge.shield.checkmark")
-                    }
+                        profileLinkCard(
+                            title: "一网通办信息",
+                            subtitle: "身份与组织信息",
+                            icon: "person.text.rectangle",
+                            color: .indigo
+                        ) {
+                            ProfileYwtbInfoView()
+                        }
 
-                    NavigationLink {
-                        ProfileNetworkInfoView().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("网络模式", systemImage: "network")
-                    }
-
-                    NavigationLink {
-                        ProfileAboutView().hideGlobalTabBarOnPush()
-                    } label: {
-                        Label("关于", systemImage: "info.circle")
-                    }
-                }
-
-                Section("账号操作") {
-                    Button(loginState.isLoggedIn ? "退出登录" : "去登录") {
-                        if loginState.isLoggedIn {
-                            showLogoutAlert = true
-                        } else {
-                            showLoginSheet = true
+                        profileLinkCard(
+                            title: "NSA 个人信息",
+                            subtitle: "学工系统资料",
+                            icon: "person.badge.shield.checkmark",
+                            color: .teal
+                        ) {
+                            ProfileNsaInfoView()
                         }
                     }
-                    .foregroundStyle(loginState.isLoggedIn ? .red : .blue)
-                    .disabled(isLoggingOut)
+
+                    sectionTitle("其他", subtitle: "网络与应用信息")
+                    VStack(spacing: 10) {
+                        profileLinkCard(
+                            title: "网络模式",
+                            subtitle: "校园网 / WebVPN",
+                            icon: "network",
+                            color: .orange
+                        ) {
+                            ProfileNetworkInfoView()
+                        }
+
+                        profileLinkCard(
+                            title: "关于",
+                            subtitle: "版本与项目信息",
+                            icon: "info.circle",
+                            color: .gray
+                        ) {
+                            ProfileAboutView()
+                        }
+                    }
+
+                    actionCard
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
+            .scrollIndicators(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
             .overlay {
                 if isLoggingOut {
                     ProgressView("正在退出...")
@@ -804,6 +1085,176 @@ struct ProfileView: View {
             } message: {
                 Text("退出后将清除本地登录态和缓存信息。")
             }
+        }
+    }
+
+    private var profileHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                avatarView
+                    .frame(width: 56, height: 56)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(displayName)
+                        .font(.title3.weight(.bold))
+                    Text(loginState.activeUsername)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                StatusBadge(text: "\(connectedCount) 个系统", color: .blue)
+            }
+
+            HStack(spacing: 8) {
+                StatusBadge(text: networkModeText, color: networkModeColor)
+                if let identity = loginState.ywtbUserInfo?.identityTypeName, !identity.isEmpty {
+                    StatusBadge(text: identity, color: .indigo)
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            LinearGradient(
+                colors: [Color.blue.opacity(0.14), Color(uiColor: .secondarySystemBackground)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+    }
+
+    private var avatarView: some View {
+        Group {
+            if let data = loginState.nsaPhotoData, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Circle().fill(Color.blue.opacity(0.16))
+                    Text(String(displayName.prefix(1)))
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(Color.blue)
+                }
+            }
+        }
+        .clipShape(Circle())
+    }
+
+    @ViewBuilder
+    private func sectionTitle(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.headline)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func profileLinkCard<Destination: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination().hideGlobalTabBarOnPush()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 36, height: 36)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var actionCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("账号操作")
+                .font(.headline)
+            Button(loginState.isLoggedIn ? "退出登录" : "去登录") {
+                if loginState.isLoggedIn {
+                    showLogoutAlert = true
+                } else {
+                    showLoginSheet = true
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(loginState.isLoggedIn ? .red : .blue)
+            .disabled(isLoggingOut)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+    }
+
+    private var displayName: String {
+        if let name = loginState.nsaProfile?.name, !name.isEmpty {
+            return name
+        }
+        if let name = loginState.ywtbUserInfo?.userName, !name.isEmpty {
+            return name
+        }
+        return loginState.activeUsername
+    }
+
+    private var connectedCount: Int {
+        [
+            loginState.attendanceLogin,
+            loginState.jwxtLogin,
+            loginState.jwappLogin,
+            loginState.ywtbLogin,
+            loginState.libraryLogin,
+            loginState.campusCardLogin,
+            loginState.gmisLogin,
+            loginState.gsteLogin
+        ]
+        .compactMap { $0 }
+        .count
+    }
+
+    private var networkModeText: String {
+        switch loginState.isOnCampus {
+        case .some(true):
+            return "校园网"
+        case .some(false):
+            return "WebVPN"
+        case .none:
+            return "网络未检测"
+        }
+    }
+
+    private var networkModeColor: Color {
+        switch loginState.isOnCampus {
+        case .some(true):
+            return .green
+        case .some(false):
+            return .orange
+        case .none:
+            return .gray
         }
     }
 

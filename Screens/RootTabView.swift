@@ -65,38 +65,67 @@ struct RootTabView: View {
 
     @State private var selectedTab = 0
     @State private var showLoginSheet = false
-    @State private var preferredLoginType: LoginType = .jwxt
+    @State private var showTermsConfirm = false
+
+    private var loginRequestBinding: Binding<Bool> {
+        Binding(
+            get: { false },
+            set: { shouldShow in
+                guard shouldShow else { return }
+                requestLoginFlow()
+            }
+        )
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView(showLoginSheet: $showLoginSheet, preferredLoginType: $preferredLoginType)
+            HomeView(showLoginSheet: loginRequestBinding)
                 .tabItem {
                     Label("首页", systemImage: "house")
                 }
                 .tag(0)
 
-            AcademicView(showLoginSheet: $showLoginSheet)
+            AcademicView(showLoginSheet: loginRequestBinding)
                 .tabItem {
                     Label("教务", systemImage: "graduationcap")
                 }
                 .tag(1)
 
-            ToolsView(showLoginSheet: $showLoginSheet)
+            ToolsView(showLoginSheet: loginRequestBinding)
                 .tabItem {
                     Label("工具", systemImage: "wrench.and.screwdriver")
                 }
                 .tag(2)
 
-            ProfileView(showLoginSheet: $showLoginSheet)
+            ProfileView(showLoginSheet: loginRequestBinding)
                 .tabItem {
                     Label("我的", systemImage: "person")
                 }
                 .tag(3)
         }
         .tint(.blue)
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheetView(initialLoginType: preferredLoginType)
+        .alert("使用条款确认", isPresented: $showTermsConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("同意并继续") {
+                Task {
+                    await loginState.acceptEula()
+                    showLoginSheet = true
+                }
+            }
+        } message: {
+            Text("继续登录即表示你已阅读并同意本应用使用条款与免责声明。账号密码仅用于向学校官方系统发起认证。")
+        }
+        .fullScreenCover(isPresented: $showLoginSheet) {
+            LoginSheetView()
                 .environmentObject(loginState)
+        }
+    }
+
+    private func requestLoginFlow() {
+        if loginState.eulaAccepted {
+            showLoginSheet = true
+        } else {
+            showTermsConfirm = true
         }
     }
 }

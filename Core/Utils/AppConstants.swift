@@ -29,7 +29,9 @@ enum AppConstants {
         static let cookies = "xjtu.cookies"
         static let nsaProfile = "xjtu.nsa.profile"
         static let nsaPhoto = "xjtu.nsa.photo"
+        static let eulaAcceptedVersion = "xjtu.eula.accepted.version"
     }
 
+    static let currentEulaVersion = 1
     static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
 }

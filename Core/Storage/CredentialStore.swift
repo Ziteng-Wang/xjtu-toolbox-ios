@@ -84,6 +84,14 @@ actor CredentialStore {
         defaults.removeObject(forKey: AppConstants.StorageKey.nsaPhoto)
     }
 
+    func isEulaAccepted() -> Bool {
+        defaults.integer(forKey: AppConstants.StorageKey.eulaAcceptedVersion) >= AppConstants.currentEulaVersion
+    }
+
+    func acceptEula() {
+        defaults.set(AppConstants.currentEulaVersion, forKey: AppConstants.StorageKey.eulaAcceptedVersion)
+    }
+
     private func saveKeychain(value: String, account: String) {
         let data = Data(value.utf8)
         let query: [CFString: Any] = [

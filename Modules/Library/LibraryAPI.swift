@@ -189,7 +189,7 @@ final class LibraryAPI {
                 if let seatID = body.firstMatch(pattern: #"([A-Z]\d{2,4})"#), !seatID.isEmpty {
                     let area = Self.areaMap.keys.first(where: { body.contains($0) })
                     let status = body.firstMatch(pattern: #"预约状态\s*[:：]\s*(\S+)"#)
-                    let actions = parseActionURLs(from: body, baseURL: response.finalURL)
+                    let actions = parseActionURLs(from: body)
                     return MyBookingInfo(seatID: seatID, area: area, statusText: status, actionURLs: actions)
                 }
             } catch {
@@ -304,24 +304,30 @@ final class LibraryAPI {
         return "预约失败"
     }
 
-    private func parseActionURLs(from html: String, baseURL: URL) -> [String: String] {
+    private func parseActionURLs(from html: String) -> [String: String] {
         var result: [String: String] = [:]
 
-        let mappings: [(String, String)] = [
-            ("取消预约", "cancel"),
-            ("签到", "firstruguan"),
-            ("临时离馆", "midleave"),
-            ("回馆签到", "midreturn")
+        let mappings: [(label: String, action: String, queryKey: String)] = [
+            ("取消预约", "cancel", "cancel"),
+            ("签到", "ruguan1", "firstruguan"),
+            ("临时离馆", "midleave", "midleave"),
+            ("回馆签到", "midreturn", "midreturn")
         ]
 
-        for (label, key) in mappings {
-            if let id = html.firstMatch(pattern: "showConfirmModal\\([^\\)]*'\\(key)'\\s*,\\s*'(\\d+)'\\)") {
-                result[label] = "\(Self.baseURL)/my/?\(key == "cancel" ? "cancel" : key)=1&ri=\(id)"
+        for mapping in mappings {
+            let pattern = #"showConfirmModal\s*\(\s*['"][^'"]*['"]\s*,\s*'ACTION'\s*,\s*'(\d+)'\s*\)"#
+                .replacingOccurrences(of: "ACTION", with: mapping.action)
+            if let reserveID = html.firstMatch(pattern: pattern), !reserveID.isEmpty {
+                result[mapping.label] = "\(Self.baseURL)/my/?\(mapping.queryKey)=1&ri=\(reserveID)"
             }
         }
 
-        if let cancelURL = html.firstMatch(pattern: #"['"](/my/\?cancel=1&ri=\d+)['"]"#) {
-            result["取消预约"] = cancelURL
+        for mapping in mappings {
+            let pattern = #"/my/\?QUERY=1&ri=(\d+)"#
+                .replacingOccurrences(of: "QUERY", with: mapping.queryKey)
+            if let reserveID = html.firstMatch(pattern: pattern), !reserveID.isEmpty {
+                result[mapping.label] = "\(Self.baseURL)/my/?\(mapping.queryKey)=1&ri=\(reserveID)"
+            }
         }
 
         return result
